@@ -336,3 +336,22 @@
     top: 50px;
   }
 }
+
+/* A group label between lists, and a number with its unit. */
+.set-grp {
+  margin: 0;
+  padding: 18px 0 4px;
+  color: var(--color-faint);
+  font-size: var(--text-label);
+}
+.unit-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.unit-field input[type="number"] {
+  width: 64px;
+}
+.unit-field .t3 {
+  color: var(--color-muted);
+}

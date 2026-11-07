@@ -1,4 +1,4 @@
-import { Search } from "lucide-react";
+import { ChevronDown, Search } from "lucide-react";
 import { settingsLabel } from "./settingsSearch";
 import { useEffect, useState } from "react";
 import { api, request } from "../../api/client";
@@ -45,6 +45,7 @@ function DetailRowsButton() {
     <>
       <Button
         small
+        icon={<ChevronDown size={13} aria-hidden />}
         onClick={(event) => {
           const rect = event.currentTarget.getBoundingClientRect();
           setAnchor({ x: rect.left, y: rect.bottom + 4 });
@@ -56,6 +57,25 @@ function DetailRowsButton() {
     </>
   );
 }
+
+/** A whole number with its unit beside it, saved when the field loses focus. */
+function NumberWithUnit({ value, unit, label, save, disabled }: { value: unknown; unit: string; label: string; save(next: number): void; disabled: boolean }) {
+  return (
+    <span className="unit-field">
+      <input type="number" min={1} aria-label={label} disabled={disabled} defaultValue={typeof value === "number" ? value : ""}
+        onBlur={(event) => {
+          const next = Number(event.target.value);
+          if (Number.isFinite(next) && event.target.value !== "" && next !== value) save(next);
+        }} />
+      <span className="t3">{unit}</span>
+    </span>
+  );
+}
+
+const unitRow = (key: string, title: string, description: string, unit = "minutes") => ({
+  key, title, description,
+  render: (value: unknown, save: (next: unknown) => void, control: { disabled: boolean }) => <NumberWithUnit value={value} unit={unit} label={title} save={save} disabled={control.disabled} />,
+});
 
 export function GeneralSection() {
   const working = useUi((state) => state.workingSection);
@@ -69,6 +89,7 @@ export function GeneralSection() {
   const confirmDelete = useUi((state) => state.confirmDelete);
   const setPrefs = useUi((state) => state.setPrefs);
   const sound = useUi((state) => state.threadSound);
+  const order = [{ value: "updated_at", label: "Last user message" }, { value: "created_at", label: "Created" }] as const;
   return (
     <>
       {heading("General")}
@@ -80,134 +101,91 @@ export function GeneralSection() {
           { value: "worktree", label: "A new worktree" },
         ],
       }] }]} />
-      <DesktopApp />
-      <SettingGroup title="Notifications">
-        <SettingRow
-          title={settingsLabel("general-thread-notifications")}
-          description="When a thread finishes, fails, or needs input or approval."
-        >
-          <select
-            aria-label="Thread notifications"
+      <SettingGroup>
+        <SettingRow title={settingsLabel("general-thread-notifications")} description="When a thread finishes, fails or needs you">
+          <Segmented
+            label="Thread notifications"
             value={notifications ? (sound ? "both" : "alert") : sound ? "sound" : "off"}
-            onChange={(event) => {
-              const { value } = event.target;
+            options={[
+              { value: "off", label: "Off" },
+              { value: "alert", label: "Notifications" },
+              { value: "sound", label: "Sound" },
+              { value: "both", label: "Both" },
+            ]}
+            onChange={(value) => {
               const alert = value === "alert" || value === "both";
               if (alert && "Notification" in window) void Notification.requestPermission();
               setPrefs({ threadNotifications: alert, threadSound: value === "sound" || value === "both" });
             }}
-          >
-            <option value="off">Off</option>
-            <option value="alert">Notifications</option>
-            <option value="sound">Sound</option>
-            <option value="both">Notifications and sound</option>
-          </select>
+          />
         </SettingRow>
         <Toggle
           title={settingsLabel("general-in-app-notifications")}
-          description="Show a toast when another thread finishes, fails, or needs input or approval."
+          description="A toast when another thread finishes, fails or needs input"
           on={inApp}
           set={(on) => setPrefs({ inAppNotifications: on })}
         />
       </SettingGroup>
-      <SettingGroup title="Thread details">
+      <PreferenceGroups groups={[{ title: "", rows: [{
+        key: "quit_confirmation",
+        title: settingsLabel("general-quit-confirmation"),
+        description: "How ⌘Q quits the desktop app on macOS. The Quit menu item always quits.",
+        segmented: true,
+        options: [
+          { value: "direct", label: "Quit at once" },
+          { value: "hold", label: "Hold ⌘Q" },
+          { value: "double_press", label: "Press ⌘Q twice" },
+        ],
+      }] }]} />
+      <SettingGroup>
+        <SettingRow title={settingsLabel("general-project-grouping")} description="How projects in the same repository are shown">
+          <Segmented
+            label="Project grouping"
+            value={projectGrouping}
+            options={[
+              { value: "repository", label: "Repository" },
+              { value: "repository_path", label: "Repository path" },
+              { value: "separate", label: "Separate" },
+            ]}
+            onChange={(value) => setPrefs({ projectGrouping: value as ProjectGroupingMode })}
+          />
+        </SettingRow>
+        <SettingRow title={settingsLabel("general-project-order")}>
+          <Segmented label="Project order" value={projectSort} options={[...order]} onChange={(value) => setPrefs({ projectSort: value })} />
+        </SettingRow>
+        <SettingRow title={settingsLabel("general-thread-order")}>
+          <Segmented label="Thread order" value={threadSort} options={[...order]} onChange={(value) => setPrefs({ threadSort: value })} />
+        </SettingRow>
+        <Toggle
+          title={settingsLabel("general-working-section")}
+          description="Fold working threads into a shelf at the top of the sidebar"
+          on={working}
+          set={(on) => setPrefs({ workingSection: on })}
+        />
         <SettingRow title={settingsLabel("general-rows")} description="Choose what the details card shows. You can also right-click the card.">
           <DetailRowsButton />
         </SettingRow>
       </SettingGroup>
-      <SettingGroup title="Sidebar">
-        <Toggle
-          title={settingsLabel("general-working-section")}
-          description="Threads at work, or waiting on delegated work or a watched pull request, fold into a shelf."
-          on={working}
-          set={(on) => setPrefs({ workingSection: on })}
-        />
-        <SettingRow
-          title={settingsLabel("general-project-grouping")}
-          description="How project folders combine checkouts of one repository. Used when threads are grouped by project."
-        >
-          <select
-            aria-label="Project grouping"
-            value={projectGrouping}
-            onChange={(event) => setPrefs({ projectGrouping: event.target.value as ProjectGroupingMode })}
-          >
-            <option value="repository">Repository</option>
-            <option value="repository_path">Repository path</option>
-            <option value="separate">Separate</option>
-          </select>
-        </SettingRow>
-        <SettingRow title={settingsLabel("general-project-order")}>
-          <select
-            aria-label="Project order"
-            value={projectSort}
-            onChange={(event) => setPrefs({ projectSort: event.target.value as typeof projectSort })}
-          >
-            <option value="updated_at">Last user message</option>
-            <option value="created_at">Created</option>
-          </select>
-        </SettingRow>
-        <SettingRow title={settingsLabel("general-thread-order")}>
-          <select
-            aria-label="Thread order"
-            value={threadSort}
-            onChange={(event) => setPrefs({ threadSort: event.target.value as typeof threadSort })}
-          >
-            <option value="updated_at">Last user message</option>
-            <option value="created_at">Created</option>
-          </select>
-        </SettingRow>
-      </SettingGroup>
-      <PreferenceGroups
-        groups={[
-          {
-            title: "Background activity",
-            rows: [
-              {
-                key: "background_activity_profile",
-                title: settingsLabel("general-activity-profile"),
-                options: [
-                  { value: "balanced", label: "Balanced" },
-                  { value: "saver", label: "Saver" },
-                  { value: "performance", label: "Performance" },
-                ],
-              },
-              { key: "automatic_git_fetch_minutes", title: settingsLabel("general-git-fetch-interval-minutes") },
-              { key: "provider_health_refresh_minutes", title: settingsLabel("general-provider-health-interval-minutes") },
-              {
-                key: "keep_awake_during_runs",
-                title: settingsLabel("general-keep-the-computer-awake-during-runs"),
-                description: "In the desktop app. The screen can still sleep.",
-              },
-            ],
-          },
-          {
-            title: "Quitting",
-            rows: [
-              {
-                key: "quit_confirmation",
-                title: settingsLabel("general-quit-confirmation"),
-                description: "How ⌘Q quits the desktop app on macOS. The Quit menu item always quits.",
-                options: [
-                  { value: "direct", label: "Quit at once" },
-                  { value: "hold", label: "Hold ⌘Q" },
-                  { value: "double_press", label: "Press ⌘Q twice" },
-                ],
-              },
-            ],
-          },
-          {
-            title: "Providers",
-            rows: [
-              { key: "enable_provider_update_checks", title: settingsLabel("general-check-providers-for-updates") },
-            ],
-          },
-
-          {
-            title: "New projects",
-            rows: [{ key: "add_project_base_directory", title: settingsLabel("general-base-directory") }],
-          },
-        ]}
-      />
-      <SettingGroup title="Confirmations">
+      <PreferenceGroups groups={[{ title: "", rows: [{
+        key: "background_activity_profile",
+        title: settingsLabel("general-activity-profile"),
+        description: "How often the app refreshes in the background",
+        segmented: true,
+        options: [
+          { value: "balanced", label: "Balanced" },
+          { value: "saver", label: "Saver" },
+          { value: "performance", label: "Performance" },
+        ],
+      },
+      unitRow("automatic_git_fetch_minutes", settingsLabel("general-git-fetch-interval-minutes"), "Background git fetch period"),
+      unitRow("provider_health_refresh_minutes", settingsLabel("general-provider-health-interval-minutes"), "How often providers are checked"),
+      { key: "enable_provider_update_checks", title: settingsLabel("general-check-providers-for-updates") },
+      { key: "keep_awake_during_runs", title: settingsLabel("general-keep-the-computer-awake-during-runs"), description: "Desktop only. The display can still sleep." },
+      { key: "add_project_base_directory", title: settingsLabel("general-base-directory"), description: "Where new projects are created" },
+      ] }]} />
+      <DesktopApp />
+      <p className="set-grp">Ask before</p>
+      <SettingGroup>
         <Toggle title={settingsLabel("general-unpin-confirmation")} on={confirmUnpin} set={(on) => setPrefs({ confirmUnpin: on })} />
         <Toggle title={settingsLabel("general-archive-confirmation")} on={confirmArchive} set={(on) => setPrefs({ confirmArchive: on })} />
         <Toggle title={settingsLabel("general-delete-confirmation")} on={confirmDelete} set={(on) => setPrefs({ confirmDelete: on })} />

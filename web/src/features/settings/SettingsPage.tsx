@@ -214,7 +214,7 @@ function SettingsPageContent({ section, onClose }: { section: SettingsSection | 
         <div className="settings-scroll">
           <div className="settings-body">
             {current === "archive" || current === "keybindings" ? null : <ScopeSentence variant={current === "projects" ? "project" : undefined} />}
-            {current === "general" ? <p className="settings-scope"><Info size={13} aria-hidden />Applies to this computer</p> : null}
+            {current === "general" ? <p className="settings-scope"><Info size={13} aria-hidden />{shell.data?.attached ? "Desktop app · applies to this computer" : "Applies to this computer"}</p> : null}
             <SettingRowIds.Provider value={(title) => settingSearchId(current, title)}>
               <View key={current} />
             </SettingRowIds.Provider>
