@@ -505,9 +505,16 @@ pub async fn shell_action(
     State(state): State<AppState>,
     ApiJson(body): ApiJson<orbyn_contracts::ShellRequest>,
 ) -> ApiResult<StatusCode> {
-    // A remote viewer must not stop the desktop app and its runs.
-    if state.remote && body.action == orbyn_contracts::ShellAction::Quit {
-        return Err(CoreError::Invalid("Quit the app from the computer it runs on.".into()).into());
+    // A remote viewer must not stop, restart or look into the desktop app and its runs.
+    if state.remote
+        && matches!(
+            body.action,
+            orbyn_contracts::ShellAction::Quit
+                | orbyn_contracts::ShellAction::RestartService
+                | orbyn_contracts::ShellAction::ShowLog
+        )
+    {
+        return Err(CoreError::Invalid("Do this from the computer the app runs on.".into()).into());
     }
     state.core.shell.request(body.action)?;
     Ok(StatusCode::ACCEPTED)
@@ -901,6 +908,20 @@ pub async fn rotate_webhook(
     Ok(Json(state.core.rotate_webhook(&id, LOCAL_USER)?))
 }
 
+pub async fn task_webhook(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.webhook_address(&id)?))
+}
+
+pub async fn task_runs(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.task_runs(&id)?))
+}
+
 pub async fn task_deliveries(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -1051,6 +1072,14 @@ pub async fn storage_cleanup(
 ) -> ApiResult<impl IntoResponse> {
     let dry_run = query.get("dry_run").is_some_and(|value| value == "true");
     Ok(Json(state.core.storage_cleanup(dry_run).await?))
+}
+
+pub async fn dependency_health(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.dependency_health().await?))
+}
+
+pub async fn storage_preview(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.storage_preview().await?))
 }
 
 pub async fn cleanup_report(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
@@ -1359,6 +1388,21 @@ pub async fn native_session_capabilities(
     Path(id): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     Ok(Json(state.core.native_session_capabilities(&id).await?))
+}
+
+pub async fn native_session_count(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.native_session_count(&id)?))
+}
+
+pub async fn probe_engine_binary(
+    ApiJson(body): ApiJson<orbyn_contracts::ProbeBinary>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(
+        orbyn_core::agents::engines::probe::probe_binary(&body.path).await,
+    ))
 }
 
 pub async fn list_native_sessions(

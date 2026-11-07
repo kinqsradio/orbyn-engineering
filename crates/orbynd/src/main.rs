@@ -437,6 +437,10 @@ fn router(state: AppState) -> Router {
             get(api::native_session_capabilities),
         )
         .route(
+            "/api/engines/{id}/native-sessions/count",
+            get(api::native_session_count),
+        )
+        .route(
             "/api/engines/{id}/native-sessions",
             get(api::list_native_sessions),
         )
@@ -527,6 +531,8 @@ fn router(state: AppState) -> Router {
             "/api/storage/cleanup",
             get(api::cleanup_report).post(api::storage_cleanup),
         )
+        .route("/api/storage/cleanup/preview", get(api::storage_preview))
+        .route("/api/health/dependencies", get(api::dependency_health))
         .route("/api/tasks", get(api::tasks).post(api::save_task))
         .route(
             "/api/tasks/{id}",
@@ -534,7 +540,11 @@ fn router(state: AppState) -> Router {
         )
         .route("/api/tasks/{id}/enabled", post(api::set_task_enabled))
         .route("/api/tasks/{id}/run", post(api::run_task))
-        .route("/api/tasks/{id}/webhook", post(api::rotate_webhook))
+        .route(
+            "/api/tasks/{id}/webhook",
+            get(api::task_webhook).post(api::rotate_webhook),
+        )
+        .route("/api/tasks/{id}/runs", get(api::task_runs))
         .route("/api/tasks/{id}/deliveries", get(api::task_deliveries))
         .route("/api/threads/{id}/delegate", post(api::delegate))
         .route("/api/threads/batch", post(api::batch_threads))
@@ -663,6 +673,7 @@ fn router(state: AppState) -> Router {
         .route("/api/threads/{id}/diff", get(api::thread_diff))
         .route("/api/engines", get(api::list_engines))
         .route("/api/engines/refresh", post(api::refresh_engines))
+        .route("/api/engines/probe-binary", post(api::probe_engine_binary))
         .route("/api/engines/custom", post(api::add_custom_engine))
         .route(
             "/api/engines/custom/{id}",

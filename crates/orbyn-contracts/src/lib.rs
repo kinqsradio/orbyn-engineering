@@ -367,6 +367,15 @@ pub struct Thread {
     /// This thread works in a scratch folder rather than a project.
     #[serde(default)]
     pub scratch: bool,
+    /// The project was removed from Orbyn. The thread stays, archived, and cannot be
+    /// unarchived until the folder is added back. Absent unless true.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(as = "Option<bool>", optional)]
+    pub project_removed: bool,
+    /// The removed project's name, kept so the archive can still say where it was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub removed_project_name: Option<String>,
 }
 }
 
@@ -2363,6 +2372,40 @@ pub struct CleanupEntry {
     pub path: String,
     pub removed: bool,
     pub reason: String,
+    /// A run now would remove it. False for one the rules name but cannot touch, such as
+    /// a worktree with uncommitted work or another live thread in it.
+    #[serde(default)]
+    #[ts(as = "Option<bool>", optional)]
+    pub eligible: bool,
+    /// Its size, measured only by a preview.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub bytes: Option<u64>,
+}
+}
+
+wire! {
+pub struct CleanupGroup {
+    /// `worktree`, `artifact` or `log`.
+    pub kind: String,
+    /// What a run now would remove.
+    pub count: u64,
+    pub bytes: u64,
+    /// Named by the rules but kept: uncommitted work, or in use.
+    pub held: u64,
+}
+}
+
+wire! {
+/// What Delete now, or Delete settled worktrees, would remove if run this moment.
+/// Nothing is changed to produce it.
+pub struct CleanupPreview {
+    pub groups: Vec<CleanupGroup>,
+    pub count: u64,
+    pub bytes: u64,
+    /// A worktree was too large to measure in full, so `bytes` is a floor.
+    pub partial: bool,
+    pub entries: Vec<CleanupEntry>,
 }
 }
 
@@ -2573,6 +2616,41 @@ pub struct WebhookDelivery {
     pub body: String,
     pub prompt: Option<String>,
     pub thread_id: Option<String>,
+    /// Who sent it, from the request's headers: a known service such as `GitHub`, or
+    /// the sender's `User-Agent`. Absent when the request names none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub from: Option<String>,
+}
+}
+
+wire! {
+/// Where a task's webhook listens. The token is kept only as a digest, so it cannot
+/// be shown again; `rotate` issues a new one.
+pub struct WebhookAddress {
+    /// A token has been issued, so the address accepts requests.
+    pub configured: bool,
+    /// The address up to the token: `/hooks/{task id}/`.
+    pub path_prefix: String,
+}
+}
+
+wire! {
+/// One firing of a task, newest first. The service keeps the last 50 per task.
+pub struct TaskRun {
+    pub id: String,
+    pub task_id: String,
+    /// `schedule`, `manual`, `webhook` or `after_thread`.
+    pub source: String,
+    pub started_at: String,
+    /// When the run ended; absent while it is queued or running, and when it never began.
+    pub ended_at: Option<String>,
+    /// `queued`, `running`, `completed`, `failed`, `cancelled`, `interrupted`,
+    /// `refused` (it could not start, see `error`) or `skipped` (near a usage limit).
+    pub outcome: String,
+    /// The thread the run works in, to open from the history.
+    pub thread_id: Option<String>,
+    pub error: Option<String>,
 }
 }
 
@@ -2917,6 +2995,11 @@ pub enum ShellAction {
     /// Quits the app, which stops its service and runs; sent once a window's quit
     /// confirmation is met.
     Quit,
+    /// Starts the local service again, as the startup page's Try again does. Runs it
+    /// held are interrupted and picked up as after any restart.
+    RestartService,
+    /// Shows the service's log file in the file manager.
+    ShowLog,
 }
 }
 
@@ -3274,6 +3357,75 @@ pub struct EngineStatus {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub accent: Option<String>,
+    /// The signed-in account, such as an email, when the CLI's own status reports one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub account: Option<String>,
+}
+}
+
+wire! {
+/// One reachability check: whether anything answered at a host, not whether it is signed in.
+pub struct DependencyCheck {
+    pub host: String,
+    /// False when the check was not made, for example in offline mode.
+    pub checked: bool,
+    pub reachable: bool,
+    /// The HTTP status of the answer; any answer shows the host is reachable.
+    pub status: Option<u16>,
+    pub latency_ms: Option<u64>,
+    pub message: Option<String>,
+}
+}
+
+wire! {
+pub struct ProviderHealth {
+    pub engine: String,
+    pub name: String,
+    /// Its program was found and answered `--version`.
+    pub installed: bool,
+    pub auth: AuthState,
+    /// The program's own problem, from the probe.
+    pub problem: Option<String>,
+    /// The provider's service, for Claude and Codex; absent for engines with no fixed host.
+    pub service: Option<DependencyCheck>,
+}
+}
+
+wire! {
+/// What the app depends on, as reachable from this machine right now.
+pub struct DependencyHealth {
+    pub checked_at: String,
+    pub github: DependencyCheck,
+    pub providers: Vec<ProviderHealth>,
+}
+}
+
+wire! {
+pub struct ProbeBinary {
+    /// An absolute path to a program.
+    pub path: String,
+}
+}
+
+wire! {
+/// What running `--version` on a path showed.
+pub struct BinaryProbe {
+    /// A file is there and could be started.
+    pub exists: bool,
+    pub path: Option<String>,
+    pub version: Option<String>,
+    pub problem: Option<String>,
+}
+}
+
+wire! {
+/// How many conversations an engine keeps on this machine, from its own history folder.
+pub struct NativeSessionCount {
+    pub engine: String,
+    pub count: u64,
+    /// The history folder was too large to count to the end, so `count` is a floor.
+    pub truncated: bool,
 }
 }
 

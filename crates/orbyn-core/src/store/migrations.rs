@@ -27,7 +27,43 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (23, QUESTION_ATTACHMENTS),
     (24, PULL_GUIDES),
     (25, RUN_ENGINE_TURNS),
+    (26, PROJECT_REMOVAL_KEEPS_THREADS),
+    (27, TASK_RUNS),
+    (28, TASK_RUN_LINKS),
 ];
+
+// One row per firing of a task, kept to the last 50. How the run ended is read from
+// the run when listed, so nothing here goes stale. The link to the run is in 28.
+const TASK_RUNS: &str = r#"
+CREATE TABLE task_runs (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL REFERENCES scheduled_tasks(id) ON DELETE CASCADE,
+    source TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    started_unix INTEGER NOT NULL,
+    thread_id TEXT,
+    status TEXT NOT NULL,
+    error TEXT
+);
+CREATE INDEX task_runs_by_task ON task_runs(task_id, started_unix);
+"#;
+
+// A firing queues a message, and the run made from it carries that message's id, so
+// the history finds its own run even when many firings share one thread. A database
+// that ran 27 before these columns existed picks them up here.
+const TASK_RUN_LINKS: &str = r#"
+ALTER TABLE task_runs ADD COLUMN queued_id TEXT;
+ALTER TABLE runs ADD COLUMN queued_message_id TEXT;
+CREATE INDEX runs_by_queued_message ON runs(queued_message_id);
+"#;
+
+// Removing a project keeps its threads, archived. The project row stays as a hidden
+// tombstone so the restrictive thread FK holds, and each thread keeps the name its
+// project had.
+const PROJECT_REMOVAL_KEEPS_THREADS: &str = r#"
+ALTER TABLE projects ADD COLUMN removed_at TEXT;
+ALTER TABLE threads ADD COLUMN removed_project_name TEXT;
+"#;
 
 // The engine session and turn a run spoke in, so a rewind can ask the engine to
 // drop that turn and everything after it from the same session. Nullable: a run

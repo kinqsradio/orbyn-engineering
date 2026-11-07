@@ -213,7 +213,8 @@ impl Store {
             execution_thread.effort.clone_from(&capture.selection.effort);
             execution_thread.options.clone_from(&capture.selection.options);
             let run = super::runs::admit_in_for_engine(tx, appended, &self.epoch, &super::Admission { thread_id: thread, prompt: &capture.prompt, actor }, Some(&capture.engine))?;
-            tx.execute("UPDATE runs SET preparation_retry_of = ?2, preparation_handoff = ?3 WHERE id = ?1", params![run.id, failed_run, handoff])?;
+            tx.execute("UPDATE runs SET preparation_retry_of = ?2, preparation_handoff = ?3,
+                queued_message_id = (SELECT queued_message_id FROM runs WHERE id = ?2) WHERE id = ?1", params![run.id, failed_run, handoff])?;
             tx.execute("UPDATE thread_setup SET owner_epoch = ?2, run_id = ?3, status = 'preparing', terminal_id = NULL, exit_code = NULL WHERE thread_id = ?1", params![thread, self.epoch, run.id])?;
             if latest {
                 tx.execute("UPDATE queued_messages SET preparation_run_id = ?3 WHERE thread_id = ?1 AND preparation_run_id = ?2", params![thread, failed_run, run.id])?;
@@ -659,6 +660,70 @@ mod tests {
             .unwrap();
         assert_eq!(current.run(&first.id).unwrap().state, RunState::Failed);
     }
+    #[test]
+    fn a_firings_history_shows_the_outcome_of_its_retried_preparation() {
+        use orbyn_contracts::{ModelSelection, RunState};
+        let dir = TempDir::new();
+        let store = Store::open(&dir.path().join("state.db"), "owner").unwrap();
+        let made = thread(&store, dir.path(), "firing-retry", "Setup").unwrap();
+        store.trust_project(&made.project_id, "user").unwrap();
+        let script: ProjectScript = serde_json::from_value(
+            serde_json::json!({"name":"Setup", "command":"saved-command", "async":true}),
+        )
+        .unwrap();
+        store
+            .writer()
+            .execute(
+                "UPDATE thread_setup SET wait_for_exit = 0, script = ?1 WHERE thread_id = ?2",
+                params![serde_json::to_string(&script).unwrap(), made.id],
+            )
+            .unwrap();
+        let task = orbyn_contracts::ScheduledTask {
+            id: "task".into(),
+            project_id: made.project_id.clone(),
+            thread_id: Some(made.id.clone()),
+            name: "Tick".into(),
+            prompt: "go".into(),
+            engine: "claude".into(),
+            schedule: serde_json::from_value(serde_json::json!({ "kind": "webhook" })).unwrap(),
+            enabled: true,
+            signature: None,
+            has_secret: false,
+            filters: Vec::new(),
+            dedupe: None,
+            max_age_seconds: None,
+            timestamp_path: None,
+            next_run_at: None,
+            last_run_at: None,
+            last_status: "never".into(),
+            created_at: crate::util::now(),
+            after_run: None,
+        };
+        store.save_task(&task, None, None).unwrap();
+        let began = store.begin_task_run("task", "manual").unwrap();
+        let message = store
+            .enqueue(&made.id, "go", &[], &ModelSelection::default())
+            .unwrap();
+        store
+            .finish_task_run(&began, Some(&made.id), Some(&message.id), "started", None)
+            .unwrap();
+        store.release_queue(&made.id).unwrap();
+        let (first, _) = store.admit_next(&made.id, "system:queue").unwrap().unwrap();
+        store.fail_setup(&made.id).unwrap();
+        store
+            .finish_run(&first.id, RunState::Failed, Some("setup failed"))
+            .unwrap();
+        assert_eq!(store.task_runs("task").unwrap()[0].outcome, "failed");
+
+        let retry = retry_capture(&store, &made.id, &first.id).unwrap();
+        assert_eq!(store.task_runs("task").unwrap()[0].outcome, "running");
+        store
+            .finish_run(&retry.run.id, RunState::Completed, None)
+            .unwrap();
+
+        assert_eq!(store.task_runs("task").unwrap()[0].outcome, "completed");
+    }
+
     #[test]
     fn retrying_async_startup_failure_releases_its_hold_when_the_process_starts() {
         use crate::store::Admission;

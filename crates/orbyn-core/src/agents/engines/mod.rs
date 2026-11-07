@@ -641,6 +641,7 @@ impl EngineManager {
             sign_in_command: probe.sign_in_command,
             updating: false,
             problem: probe.problem,
+            account: probe.account,
         }
     }
 

@@ -180,6 +180,24 @@ export async function attachmentBlob(id: string, signal?: AbortSignal): Promise<
 const q = encodeURIComponent;
 
 export const api = {
+  /** Whether GitHub and each provider's service answer from this machine. Asked for, never polled by the service. */
+  dependencyHealth: (signal?: AbortSignal) =>
+    request<import("../generated/DependencyHealth").DependencyHealth>("GET", "/api/health/dependencies", undefined, signal),
+  /** Whether a program path runs, and its version. Runs `--version` with no shell, for at most five seconds. */
+  probeBinary: (path: string) =>
+    request<import("../generated/BinaryProbe").BinaryProbe>("POST", "/api/engines/probe-binary", { path } satisfies import("../generated/ProbeBinary").ProbeBinary),
+  /** How many conversations an engine keeps in its own history folder. */
+  nativeSessionCount: (engineId: string, signal?: AbortSignal) =>
+    request<import("../generated/NativeSessionCount").NativeSessionCount>("GET", `/api/engines/${q(engineId)}/native-sessions/count`, undefined, signal),
+  /** What Delete now, or Delete settled worktrees, would remove: counts and sizes. Changes nothing. */
+  storageCleanupPreview: (signal?: AbortSignal) =>
+    request<import("../generated/CleanupPreview").CleanupPreview>("GET", "/api/storage/cleanup/preview", undefined, signal),
+  /** A task's last 50 firings, newest first. */
+  taskRuns: (taskId: string, signal?: AbortSignal) =>
+    request<import("../generated/TaskRun").TaskRun[]>("GET", `/api/tasks/${q(taskId)}/runs`, undefined, signal),
+  /** Whether the webhook takes requests and its address up to the token, which is never returned. */
+  taskWebhook: (taskId: string, signal?: AbortSignal) =>
+    request<import("../generated/WebhookAddress").WebhookAddress>("GET", `/api/tasks/${q(taskId)}/webhook`, undefined, signal),
   repositoryStar: (signal?: AbortSignal) => request<import("../generated/RepositoryStarStatus").RepositoryStarStatus>("GET", "/api/source-control/repository-star", undefined, signal),
   /** An MCP App's tool call, after the person confirmed it in the host's dialog. */
   mcpAppToolCall: (threadId: string, renderId: string, name: string, args: Record<string, unknown>) =>

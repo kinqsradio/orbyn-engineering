@@ -299,6 +299,25 @@ async fn a_window_reaches_the_shell_only_through_listed_actions() {
 }
 
 #[tokio::test]
+async fn a_window_can_ask_the_shell_to_restart_the_service_and_show_its_log() {
+    let dir = TempDir::new();
+    let (mut service, _thread) = setup(&dir, desktop(), "codex").await;
+    for action in ["restart_service", "show_log"] {
+        let (code, _) = service
+            .send("/api/shell/actions", json!({ "action": action }))
+            .await;
+        assert_eq!(code, 202, "{action}");
+        let mut line = String::new();
+        while !line.contains("shell_action") {
+            line.clear();
+            service.stdout.read_line(&mut line).unwrap();
+            assert!(!line.is_empty(), "stdout closed");
+        }
+        assert!(line.contains(action), "{line}");
+    }
+}
+
+#[tokio::test]
 async fn the_shell_hears_when_work_starts_and_ends() {
     let dir = TempDir::new();
     let (mut service, thread) = setup(&dir, desktop(), "codex").await;

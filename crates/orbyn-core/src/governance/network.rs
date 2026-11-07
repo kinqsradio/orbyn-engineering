@@ -74,6 +74,12 @@ fn listed() -> Vec<NetworkRequest> {
             TELEMETRY_CONTROL,
         ),
         row(
+            "Dependency health check (GitHub and each provider's service)",
+            "api.github.com, api.anthropic.com, api.openai.com",
+            "Only when asked to check",
+            "Offline mode makes no request",
+        ),
+        row(
             "OTLP connection check",
             "The configured collector",
             "Only when asked to test it",

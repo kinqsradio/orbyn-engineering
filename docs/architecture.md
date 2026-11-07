@@ -1278,8 +1278,9 @@ disabling stores null, and numeric drafts commit on blur or Enter. A conflicting
 write refreshes the snapshot while retaining the draft for an explicit retry; it
 never replays the edit. Scope disposal fences late writes and reports. Unmentioned
 fields, including legacy project cleanup objects, remain untouched. Maintenance has
-no worktree-age control or Preview action; the dry-run API remains available for
-verification. Delete now invokes the existing environment cleanup operation, and
+no worktree-age control or Preview action; the dry-run API and `GET
+/api/storage/cleanup/preview` (counts and sizes, which Delete now and Delete settled
+worktrees share, since both run the one cleanup) remain available. Delete now invokes the existing environment cleanup operation, and
 Last run reports its actual removed/kept entries. Action eligibility also reads the
 distinct worktree policy: explicit environment Off suppresses legacy defaults,
 empty environment policy retains a valid global age including zero, and project
@@ -1409,6 +1410,16 @@ mode, and needs a trusted project at that moment. A failed firing records why an
 tries again at the next time. Changing a task by id replaces what it does and keeps
 what it earned: its history, pause, token and, unless replaced, signing secret. It
 stays in its project, and its thread must be in that project too.
+
+Every firing is noted in the task's run history, newest first and bounded to the last
+50: when it started, its source (`schedule`, `manual`, `webhook` or `after_thread`), the
+thread it works in and an outcome. A firing that could not start is `refused` with the
+reason; one put off by `task_skip_near_limit` is `skipped`; a started one is `queued`,
+`running` or the end state of the first run its thread began since, read when listed, so
+it is as current as the thread. `task_skip_near_limit` (off by default) makes a firing
+from the clock, not a manual or webhook one, wait for the next time when the task's
+engine reports a limit window at 90% or more; an engine that reports nothing never
+holds a task back.
 
 `POST /hooks/:id/:token` is public, because a sender cannot hold a session, though the
 `Host` and `Origin` checks still apply. The token is shown once and kept as a digest,
@@ -1831,8 +1842,16 @@ Clone and create are the routes that make a folder, at `<workspace>/repo/<slug>`
 default or at a chosen absolute path that holds nothing yet. A clone works in a
 staging folder beside its destination. Those projects are `managed`.
 
-Removing a project unregisters it and deletes its threads, and leaves the folder
-exactly as it was. `?delete_files=true` is refused for a folder Orbyn did not create.
+Removing a project unregisters it, archives its threads and never deletes them, and
+leaves the folder exactly as it was. Each kept thread carries `project_removed` and the
+project's name as `removed_project_name`, so the archive can say where it came from.
+The project row stays hidden, and anything that would act on it (a new thread, a task
+saved or resumed, a rename, trust, per-project preferences, a pull checkout) is refused
+with `project_removed`. Its scheduled tasks are paused at removal; one that is somehow
+still due is refused and recorded as `refused` in its history. Archived threads still list
+and read. Unarchiving such a thread is refused with
+`project_removed` (409) until the folder is added again, which restores the row
+untrusted and clears the label on its threads. `?delete_files=true` is refused for a folder Orbyn did not create.
 For one it did, dirty or unpushed work needs `confirm`, and files go only when nothing
 is dirty, unpushed, ignored or in a worktree.
 
@@ -2022,7 +2041,14 @@ never touches `PATH`, and neither replaces nor removes a file the app didn't put
 The service's stderr goes to `orbynd.log` in the app's log folder, new each launch. It is a
 file and not a pipe so the service can still log its own shutdown after the shell dies: a
 write to a dead pipe stops it before it cleans up. When the service stops, the loader
-shows the log's last line with Try again, and threads and runs are kept. Every
+shows the log's last line with Try again, and threads and runs are kept. A service
+that exits without being asked is started again once, automatically, while the loader
+says it is restarting. If the restarted service stops again within ten minutes, the
+loader says it restarted once and stopped again, and waits for Try again, which also
+earns the next crash its one restart. The product UI restarts the service or shows
+its log through the `restart_service` and `show_log` shell actions, which the service
+relays and a remote viewer is refused; the product origin still holds no capability,
+so `restart_core` stays the startup document's alone. Every
 post-spawn startup failure closes the parent pipe and retains child ownership through
 a five-second graceful-exit period, then kills and reaps a service that has not exited.
 Successful readiness transfers that ownership to the running shell.
@@ -2545,7 +2571,9 @@ because browsers cannot set headers on them.
 | `DELETE /api/tasks/:id`, `POST /api/tasks/:id/enabled` | Delete; `TaskEnabled` pauses or resumes |
 | `POST /api/tasks/:id/run` | Fire now (`202`, `{thread_id}`) |
 | `POST /api/tasks/:id/webhook` | `WebhookEndpoint`: issue or rotate the token, shown once |
-| `GET /api/tasks/:id/deliveries` | `WebhookDelivery[]`, newest 200 |
+| `GET /api/tasks/:id/webhook` | `WebhookAddress`: whether a token exists and the address up to it; the token itself is never returned |
+| `GET /api/tasks/:id/runs` | `TaskRun[]`, the last 50 firings, newest first |
+| `GET /api/tasks/:id/deliveries` | `WebhookDelivery[]`, newest 200, each with `from` when the request names a sender |
 | `POST /hooks/:id/:token` | Public webhook; `202` accepted, `200` with a status, `404` otherwise |
 | `GET, PUT /api/preferences?project_id=` | `PreferenceView[]`; `SetPreferences`, where `null` resets |
 | `PUT /api/projects/:id/preferences` | Project overrides |
@@ -2554,6 +2582,7 @@ because browsers cannot set headers on them.
 | `GET /api/diagnostics`, `POST /api/diagnostics/repair` | `Diagnostics`; `409 runs_active` |
 | `POST /api/diagnostics/otlp` | `OtlpCheck` to `OtlpResult` |
 | `GET, POST /api/storage/cleanup?dry_run=` | Last `CleanupReport`; apply the retention rules |
+| `GET /api/storage/cleanup/preview` | `CleanupPreview`: counts and bytes per kind that a run now would remove, and what it would hold back (uncommitted or shared worktrees). Changes and records nothing |
 | `GET /api/shell` | `ShellStatus` |
 | `GET /api/shell/events` | SSE `ShellEvent`, with events held for the first window |
 | `POST /api/shell/actions` | `ShellRequest` (`202`, `422` with no shell) |
@@ -2656,7 +2685,10 @@ because browsers cannot set headers on them.
 | `PATCH, DELETE /api/threads/:id/terminals/:terminal` | Rename, close |
 | `GET, DELETE /api/threads/:id/terminals/:terminal/scrollback` | `TerminalScrollback`; clear |
 | `GET, POST /api/threads/:id/scripts` | `ProjectFileView`; `RunScript` to `TerminalInfo` |
-| `GET /api/engines`, `POST /api/engines/refresh` | `EngineStatus[]` |
+| `GET /api/engines`, `POST /api/engines/refresh` | `EngineStatus[]`; `account` is the signed-in account when the CLI's own status names one (Claude's email; Codex names none) |
+| `GET /api/health/dependencies` | `DependencyHealth`: one empty `GET` each to `api.github.com` and, for an installed Claude or Codex, its provider's host; any HTTP answer is reachable. Only when asked, listed in `/api/network`; offline mode makes no request and says `checked: false` |
+| `POST /api/engines/probe-binary` | `ProbeBinary` `{path}` to `BinaryProbe`: whether an absolute path is a runnable file and the version `--version` printed. No shell, fixed argument, 5 second limit; a relative path is refused with a `problem` |
+| `GET /api/engines/:id/native-sessions/count` | `NativeSessionCount`: conversation files in the engine's own history folder (`claude`, `codex`); counted, never opened; `422 unsupported` for other engines |
 | `POST /api/engines/:id/update` | Run the owning installer (`409 engine_busy`) |
 | `GET /api/engines/update-events` | SSE `EngineUpdateProgress` while an engine update runs |
 | `POST, DELETE /api/engines/custom[/:id]` | ACP, AG-UI and terminal engines |

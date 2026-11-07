@@ -8,7 +8,9 @@ use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use orbyn_contracts::{HistoryScan, HistorySession, HistorySessionImported, ImportHistorySession};
+use orbyn_contracts::{
+    HistoryScan, HistorySession, HistorySessionImported, ImportHistorySession, NativeSessionCount,
+};
 use serde_json::Value;
 
 use crate::agents::usage::{Engine, history_root};
@@ -78,6 +80,35 @@ fn history_files(engine: Engine, root: &Path) -> (Vec<Found>, bool) {
     let truncated = found.len() > MAX_FILES || visited > MAX_DIRS;
     found.truncate(MAX_FILES);
     (found, truncated)
+}
+
+/// `.jsonl` conversations under `root`, by the same rules as `history_files` but
+/// without reading any file or its time, so counting stays cheap. True when the
+/// folder count cut it short.
+fn count_history_files(root: &Path) -> (u64, bool) {
+    let mut count = 0;
+    let mut pending = vec![root.to_path_buf()];
+    let mut visited = 0;
+    while let Some(dir) = pending.pop() {
+        visited += 1;
+        if visited > MAX_DIRS {
+            return (count, true);
+        }
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            if kind.is_dir() && entry.file_name() != "subagents" {
+                pending.push(entry.path());
+            } else if kind.is_file() && entry.path().extension().is_some_and(|ext| ext == "jsonl") {
+                count += 1;
+            }
+        }
+    }
+    (count, false)
 }
 
 struct Head {
@@ -192,6 +223,28 @@ fn same_folder(a: &str, b: &str) -> bool {
 }
 
 impl Core {
+    /// How many conversations Claude or Codex keeps in its own history folder. It
+    /// counts files and opens none.
+    pub fn native_session_count(&self, engine: &str) -> Result<NativeSessionCount> {
+        let kind = match engine {
+            "claude" => Engine::Claude,
+            "codex" => Engine::Codex,
+            _ => {
+                return Err(CoreError::Unsupported(
+                    "Orbyn reads no history folder for this engine.".into(),
+                ));
+            }
+        };
+        let (count, truncated) = history_root(kind)
+            .filter(|root| root.is_dir())
+            .map_or((0, false), |root| count_history_files(&root));
+        Ok(NativeSessionCount {
+            engine: engine.to_owned(),
+            count,
+            truncated,
+        })
+    }
+
     /// Saved Claude and Codex conversations, newest first, matched to projects.
     pub fn scan_history(&self) -> Result<HistoryScan> {
         self.scan_history_in(&[
@@ -309,6 +362,19 @@ impl Core {
 mod tests {
     use super::*;
     use crate::{CoreConfig, store::NewProject, testing::TempDir};
+
+    #[test]
+    fn the_count_takes_every_conversation_file_and_no_subagent_transcript() {
+        let dir = TempDir::new();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("a/b")).unwrap();
+        std::fs::create_dir_all(root.join("a/s1/subagents")).unwrap();
+        std::fs::write(root.join("a/one.jsonl"), "").unwrap();
+        std::fs::write(root.join("a/b/two.jsonl"), "").unwrap();
+        std::fs::write(root.join("a/notes.txt"), "").unwrap();
+        std::fs::write(root.join("a/s1/subagents/side.jsonl"), "").unwrap();
+        assert_eq!(count_history_files(root), (2, false));
+    }
 
     fn core(dir: &TempDir) -> Core {
         let mut config = CoreConfig::new(dir.path().join("data"), "http://127.0.0.1:1".into());

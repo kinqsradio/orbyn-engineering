@@ -4,4 +4,13 @@ export type CleanupEntry = {
 /**
  * `worktree`, `artifact` or `log`.
  */
-kind: string, path: string, removed: boolean, reason: string, };
+kind: string, path: string, removed: boolean, reason: string, 
+/**
+ * A run now would remove it. False for one the rules name but cannot touch, such as
+ * a worktree with uncommitted work or another live thread in it.
+ */
+eligible?: boolean, 
+/**
+ * Its size, measured only by a preview.
+ */
+bytes?: bigint, };
