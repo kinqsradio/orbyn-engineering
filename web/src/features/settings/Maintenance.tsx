@@ -5,6 +5,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "../../ui/Dialog";
 import { api, request } from "../../api/client";
 import type { CleanupReport, Diagnostics, JsonValue, OtlpResult } from "../../api/types";
+import type { ServiceProcess } from "../../generated/ServiceProcess";
 import { fullTime } from "../../lib/format";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useWorkspace } from "../../state/workspace";
@@ -379,6 +380,7 @@ function DiagnosticsGroup() {
   const [note, setNote] = useState<string | null>(null);
   const [showProblems, setShowProblems] = useState(false);
   const [repairing, setRepairing] = useState(false);
+  const [stopping, setStopping] = useState<ServiceProcess | null>(null);
   const run = async (path: string, done: string) => {
     setNote(null);
     try {
@@ -394,6 +396,7 @@ function DiagnosticsGroup() {
   if (!data) return <SettingGroup title="Diagnostics">
     <SettingsBanner tone="err">Can’t reach the Orbyn service, so there is nothing to show.</SettingsBanner>
   </SettingGroup>;
+  const stoppable = data.processes.filter((process) => process.pid !== data.pid);
   const recent = data.events.filter((event) => Date.now() - Date.parse(event.at) <= DAY_MS);
   const memory = data.history.at(-1)?.memory_bytes;
   const facts: [string, string][] = [
@@ -429,25 +432,20 @@ function DiagnosticsGroup() {
           </div>)}
         </div> : null}
       </>}
-      <ul className="setting-list" aria-label="Processes">
-        {data.processes.map((process) => (
+      <p className="set-grp">Processes</p>
+      {stoppable.length === 0 ? <p className="setting-line-desc">No running processes.</p> : <ul className="setting-list" aria-label="Processes">
+        {stoppable.map((process) => (
           <li key={process.pid}>
-            <SettingRow
-              title={process.name}
-              description={`Process ${process.pid}, ${mib(process.memory_bytes)}, running ${duration(process.running_seconds)}`}
-            >
-              {process.pid === data.pid ? null : (
-                <Button
-                  small
-                  onClick={() => void run(`/api/diagnostics/processes/${process.pid}/stop`, `Stopped ${process.name}`)}
-                >
-                  Stop
-                </Button>
-              )}
+            <SettingRow title={process.name} description={`Running ${duration(process.running_seconds)}`}>
+              <button type="button" className="set-red-link" aria-label={`Stop ${process.name}`} onClick={() => setStopping(process)}>Stop</button>
             </SettingRow>
           </li>
         ))}
-      </ul>
+      </ul>}
+      {stopping ? <ConfirmDialog title={`Stop ${stopping.name}?`} confirmLabel="Stop" tone="danger" cancelFocus onClose={() => setStopping(null)}
+        onConfirm={async () => { await run(`/api/diagnostics/processes/${stopping.pid}/stop`, `Stopped ${stopping.name}`); }}>
+        <p>It stops now. Threads that use it end their current turn.</p>
+      </ConfirmDialog> : null}
       {note ? <SettingRow title="Last action" description={note} /> : null}
       {data.database.reclaimable_bytes >= REPAIR_NOTICE_BYTES ? (
         <p className="banner banner-warn" role="status">

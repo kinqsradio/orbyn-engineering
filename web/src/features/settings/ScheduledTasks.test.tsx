@@ -84,3 +84,21 @@ it("puts Name first, typed by the person, and refuses to save without one", asyn
   expect(within(dialog).queryByText("Give the task a name.")).toBeNull();
   expect(within(dialog).getByRole("button", { name: "Save changes" })).toBeEnabled();
 });
+
+it("opens the task page from a row click, with Run now and Edit in its header and Webhook deliveries as the only tab", async () => {
+  ready();
+  window.location.hash = "#/settings/tasks";
+  installMockFetch();
+  const user = userEvent.setup();
+  render(<ScheduledTasksSection />);
+  expect(await screen.findByRole("button", { name: "Edit Incoming hook" })).toBeVisible();
+  expect(screen.queryByRole("button", { name: "History" })).toBeNull();
+  await user.click(screen.getByText("Incoming hook"));
+  expect(await screen.findByRole("heading", { name: "Incoming hook" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Run now" })).toBeVisible();
+  expect(screen.getByText("Handle the webhook.")).toBeVisible();
+  expect(screen.getByText("Webhook", { selector: "p" })).toBeVisible();
+  expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Webhook deliveries"]);
+  await user.click(screen.getByRole("button", { name: "Edit" }));
+  expect(await screen.findByRole("dialog", { name: "Edit scheduled task" })).toBeVisible();
+});

@@ -34,6 +34,8 @@ export interface PreferenceRow {
   segmented?: boolean;
   parse?(value: string): unknown;
   multiline?: boolean;
+  /** Hides the row unless this holds, given any row's current value by key. */
+  showWhen?(valueOf: (key: string) => unknown): boolean;
   /** For a value none of the plain controls fit. */
   render?(value: unknown, save: (next: unknown) => void, control: PreferenceControl): React.ReactNode;
 }

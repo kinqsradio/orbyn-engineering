@@ -110,3 +110,23 @@ it("asks before repairing the database, with Cancel focused", async () => {
   await user.click(within(ask).getByRole("button", { name: "Repair database" }));
   await waitFor(() => expect(vi.mocked(request)).toHaveBeenCalledWith("POST", "/api/diagnostics/repair"));
 });
+
+it("lists running processes with a red Stop that asks first, and says when there are none", async () => {
+  const proc = (pid: number, name: string, running_seconds: number) => ({ pid, parent: 1, name, memory_bytes: 1, running_seconds });
+  serve(() => ({ ...diagnostics([]), processes: [proc(1, "orbynd", 9000), proc(7, "claude", 3700)] }));
+  const user = userEvent.setup();
+  const { unmount } = render(<MaintenanceSection />);
+  expect(await screen.findByText("Running 1h")).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Stop orbynd" })).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Stop claude" }));
+  const ask = await screen.findByRole("dialog", { name: "Stop claude?" });
+  expect(within(ask).getByText("It stops now. Threads that use it end their current turn.")).toBeVisible();
+  await waitFor(() => expect(within(ask).getByRole("button", { name: "Cancel" })).toHaveFocus());
+  expect(vi.mocked(request)).not.toHaveBeenCalledWith("POST", "/api/diagnostics/processes/7/stop");
+  await user.click(within(ask).getByRole("button", { name: "Stop" }));
+  await waitFor(() => expect(vi.mocked(request)).toHaveBeenCalledWith("POST", "/api/diagnostics/processes/7/stop"));
+  unmount();
+  serve(() => ({ ...diagnostics([]), processes: [proc(1, "orbynd", 9000)] }));
+  render(<MaintenanceSection />);
+  expect(await screen.findByText("No running processes.")).toBeVisible();
+});

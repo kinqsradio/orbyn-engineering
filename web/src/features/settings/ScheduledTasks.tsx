@@ -327,7 +327,7 @@ function TaskDialog({ task, onClose, onSaved }: { task: ScheduledTask | null; on
 
 /** The address is shown once, when it's issued. A new one ends the old. */
 /** One task: Run now, and for a webhook task its address and the deliveries that arrived. */
-function TaskPage({ task, onBack, onChanged }: { task: ScheduledTask; onBack(): void; onChanged(): void }) {
+function TaskPage({ task, onBack, onChanged, onEdit }: { task: ScheduledTask; onBack(): void; onChanged(): void; onEdit(): void }) {
   const offline = useConnection((state) => state.offline);
   const pushToast = useUi((state) => state.pushToast);
   const [endpoint, setEndpoint] = useState<WebhookEndpoint | null>(null);
@@ -351,11 +351,19 @@ function TaskPage({ task, onBack, onChanged }: { task: ScheduledTask; onBack(): 
       <div className="set-back">
         <Button small tone="quiet" icon={<ChevronLeft size={13} aria-hidden />} onClick={onBack}>Scheduled tasks</Button>
         <h2 className="set-back-title">{task.name}</h2>
-        <Button small tone="primary" className="set-back-end" busy={running} disabled={offline} icon={<Play size={13} aria-hidden />} onClick={run}>Run now</Button>
+        <span className="set-back-end set-task-actions">
+          <Button small tone="primary" busy={running} disabled={offline} icon={<Play size={13} aria-hidden />} onClick={run}>Run now</Button>
+          <Button small onClick={onEdit}>Edit</Button>
+        </span>
       </div>
       {offline ? <p className="banner" role="status"><CloudOff size={14} aria-hidden />You're offline. Run now is unavailable.</p> : null}
+      <SettingGroup>
+        <SettingRow title="When" description={scheduleLabel(task.schedule)} />
+        <SettingRow title="Prompt"><span className="set-task-prompt">{task.prompt}</span></SettingRow>
+      </SettingGroup>
       {hook ? (
         <>
+          <p className="set-grp">Webhook</p>
           <SettingGroup>
             <SettingRow title="Webhook address" description="Anyone with this address can start the task. Keep it private.">
               {url ? <CopyCommand command={url} label="Copy webhook address" /> : null}
@@ -363,7 +371,11 @@ function TaskPage({ task, onBack, onChanged }: { task: ScheduledTask; onBack(): 
             </SettingRow>
           </SettingGroup>
           {error ? <p className="field-error" role="alert">{error}</p> : null}
-          <p className="set-grp">Deliveries</p>
+          {/* Runs joins this bar once the service keeps run history. */}
+          <div role="tablist" aria-label="History" className="set-tabs">
+            <button type="button" role="tab" id="task-tab-deliveries" aria-selected="true" aria-controls="task-panel-deliveries">Webhook deliveries</button>
+          </div>
+          <div role="tabpanel" id="task-panel-deliveries" aria-labelledby="task-tab-deliveries">
           {deliveries.status === "loading" ? (
             <Loading label="Loading deliveries" rows={3} />
           ) : deliveries.status === "error" ? (
@@ -383,6 +395,7 @@ function TaskPage({ task, onBack, onChanged }: { task: ScheduledTask; onBack(): 
               ))}
             </div>
           )}
+          </div>
         </>
       ) : null}
     </>
@@ -459,7 +472,7 @@ function TasksView({ page }: { page: boolean }) {
   );
   const openTask = opened === null ? undefined : tasks.data?.find((entry) => entry.id === opened);
   const content = openTask ? (
-    <TaskPage task={openTask} onBack={() => setOpened(null)} onChanged={tasks.reload} />
+    <TaskPage task={openTask} onBack={() => setOpened(null)} onChanged={tasks.reload} onEdit={() => setEditing(openTask)} />
   ) : (
     <>
       {page ? (
@@ -503,9 +516,10 @@ function TasksView({ page }: { page: boolean }) {
             {tasks.data.map((task) => {
               const project = projects?.find((entry) => entry.id === task.project_id)?.name;
               return (
-                <div className="task-row" role="row" key={task.id} data-paused={task.enabled ? undefined : true}>
+                <div className="task-row" role="row" key={task.id} data-paused={task.enabled ? undefined : true}
+                  onClick={(event) => { if (!(event.target as HTMLElement).closest("button, input, a")) setOpened(task.id); }}>
                   <span role="cell" className="task-name">
-                    <b>{task.name}</b>
+                    <button type="button" className="set-link" aria-label={`Open ${task.name}`} onClick={() => setOpened(task.id)}><b>{task.name}</b></button>
                     <small>{project}</small>
                   </span>
                   <span role="cell" className="task-when">
@@ -529,7 +543,6 @@ function TasksView({ page }: { page: boolean }) {
                     />
                   </span>
                   <span role="cell" className="task-actions">
-                    <Button small aria-label={`Open ${task.name}`} onClick={() => setOpened(task.id)}>History</Button>
                     <Button small aria-label={`Edit ${task.name}`} onClick={() => setEditing(task)}>Edit</Button>
                   </span>
                 </div>
@@ -538,12 +551,10 @@ function TasksView({ page }: { page: boolean }) {
           </div>
         )}
       </div>
-      {editing ? (
-        <TaskDialog task={editing === "new" ? null : editing} onClose={closeEditor} onSaved={tasks.reload} />
-      ) : null}
     </>
   );
-  return page ? <div className="tasks-page">{content}</div> : content;
+  const dialog = editing ? <TaskDialog task={editing === "new" ? null : editing} onClose={closeEditor} onSaved={tasks.reload} /> : null;
+  return page ? <div className="tasks-page">{content}{dialog}</div> : <>{content}{dialog}</>;
 }
 
 /** Scheduled tasks as a section of Settings. */

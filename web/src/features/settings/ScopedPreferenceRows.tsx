@@ -68,6 +68,7 @@ export function ScopedRows({ groups, query, inheritance }: {
       {group.rows.map((row) => {
         const value = result.rows.find((entry) => entry.key === row.key);
         if (!value) return null;
+        if (row.showWhen && !row.showWhen((key) => result.rows.find((entry) => entry.key === key)?.value)) return null;
         const hasOverride = value.members.some((member) => member.view.source === "project");
         return <SettingRow key={row.key} title={row.title} description={row.description} actions={
           <div className="setting-inheritance-actions">
