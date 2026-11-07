@@ -1,4 +1,4 @@
-import { ChevronDown, Search } from "lucide-react";
+import { Check, ChevronDown, RefreshCw, Search } from "lucide-react";
 import { settingsLabel } from "./settingsSearch";
 import { useEffect, useState } from "react";
 import { api, request } from "../../api/client";
@@ -7,7 +7,7 @@ import type { ProjectGroupingMode } from "../../generated/ProjectGroupingMode";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import { useVisibleProjects } from "../../state/workspace";
-import { Button, Pill } from "../../ui/controls";
+import { Button } from "../../ui/controls";
 import licenses from "./licenses.json";
 import { Empty, ErrorState, Loading } from "../../ui/states";
 import { Segmented } from "../../ui/Segmented";
@@ -17,7 +17,7 @@ import { Menu } from "../../ui/Menu";
 import { Presence } from "../../ui/Presence";
 import { DETAIL_ROWS, detailsMenuItems } from "../thread/DetailsCard";
 import { DesktopApp } from "./DesktopApp";
-import { Advanced, PreferenceGroups } from "./PreferenceRows";
+import { PreferenceGroups } from "./PreferenceRows";
 import { WorktreeCleanup } from "./WorktreeCleanup";
 import { SourceControlWriting } from "./SourceControlWriting";
 import type { TriagePlaybook } from "../../generated/TriagePlaybook";
@@ -378,41 +378,37 @@ export function DiffsSection() {
           { value: "rebase", label: "Rebase" },
         ],
       }] }]} />
-      <SettingGroup title="Links">
-        <Toggle
-          title={settingsLabel("diffs-open-pull-request-links-here")}
-          description="Off opens them on the host."
-          on={inApp}
-          set={(on) => setPrefs({ pullLinksInApp: on })}
-        />
+      <SettingGroup>
+        <SettingRow title={settingsLabel("diffs-open-pull-request-links-here")} description="In the Pull requests page, or on the host">
+          <Segmented
+            label="Open pull request links here"
+            value={inApp ? "app" : "host"}
+            options={[
+              { value: "app", label: "In the app" },
+              { value: "host", label: "On the host" },
+            ]}
+            onChange={(next) => setPrefs({ pullLinksInApp: next === "app" })}
+          />
+        </SettingRow>
       </SettingGroup>
       <PreferenceGroups
         groups={[
           {
-            title: "Pull requests",
+            title: "",
             rows: [
-              { key: "remove_agent_credits_on_merge", title: settingsLabel("diffs-remove-agent-credits-on-merge") },
-            ],
-          },
-          {
-            title: "Review guides",
-            rows: [
+              { key: "remove_agent_credits_on_merge", title: settingsLabel("diffs-remove-agent-credits-on-merge"), description: "Strips agent credit lines from the merged commit message" },
               {
                 key: "review_guides_enabled",
                 title: settingsLabel("diffs-review-guides"),
-                description: "An agent writes a stop-by-stop guide for a pull request. The guide stays in Orbyn.",
+                description: "An agent writes a walkthrough for each pull request",
               },
               {
                 key: "review_guide_instructions",
                 title: settingsLabel("diffs-guide-instructions"),
-                description: "Added to the request that asks the agent for a guide.",
+                description: "What the guide should cover",
                 multiline: true,
               },
-              {
-                key: "review_guide_model",
-                title: settingsLabel("diffs-guide-model"),
-                description: "A model ID for the guide thread. Empty uses the engine's default.",
-              },
+              { key: "review_guide_model", title: settingsLabel("diffs-guide-model") },
             ],
           },
         ]}
@@ -428,43 +424,34 @@ export function WorktreesSection() {
       <PreferenceGroups
         groups={[
           {
-            title: "New worktrees",
+            title: "",
             rows: [
-              { key: "new_worktrees_start_from_origin", title: settingsLabel("worktrees-start-from-origin") },
+              { key: "new_worktrees_start_from_origin", title: settingsLabel("worktrees-start-from-origin"), description: "Base new worktrees on the remote branch, not the local one" },
               {
                 key: "worktree_submodules",
                 title: settingsLabel("worktrees-submodules"),
+                description: "Initialise submodules in each new worktree",
                 options: [
                   { value: "recursive", label: "Recursive" },
                   { value: "top-level", label: "Top level only" },
                   { value: "none", label: "Skip" },
                 ],
               },
+              {
+                key: "branch_naming_mode",
+                title: settingsLabel("worktrees-naming"),
+                segmented: true,
+                options: [
+                  { value: "static", label: "Static" },
+                  { value: "semantic", label: "Semantic" },
+                  { value: "custom", label: "Custom" },
+                ],
+              },
+              { key: "branch_name_prefix", title: settingsLabel("worktrees-branch-prefix"), description: "Added in front of every branch Orbyn creates" },
             ],
           },
         ]}
       />
-      <Advanced>
-        <PreferenceGroups
-          groups={[
-            {
-              title: "Branch names",
-              rows: [
-                {
-                  key: "branch_naming_mode",
-                  title: settingsLabel("worktrees-naming"),
-                  options: [
-                    { value: "static", label: "Static" },
-                    { value: "semantic", label: "Semantic" },
-                    { value: "custom", label: "Custom" },
-                  ],
-                },
-                { key: "branch_name_prefix", title: settingsLabel("worktrees-branch-prefix") },
-              ],
-            },
-          ]}
-        />
-      </Advanced>
       <WorktreeCleanup />
     </>
   );
@@ -476,33 +463,31 @@ export function SourceControlSection() {
     <>
       {heading("Source control")}
       <SourceControlWriting />
-      <PreferenceGroups groups={[{ title: "Repositories", rows: [{
+      <PreferenceGroups groups={[{ title: "", rows: [{
         key: "auto_pull", title: settingsLabel("source-control-automatic-pull"),
-        description: "Keeps the default branch current when the checkout has no local changes or commits.",
+        description: "Keep tracked branches up to date in the background",
       }] }]} />
+      <div className="set-hosts-head">
+        <b>Hosts</b>
+        <Button small icon={<RefreshCw size={13} aria-hidden />} onClick={forges.reload}>Rescan</Button>
+      </div>
       {forges.status === "loading" ? (
         <Loading label="Checking source control" rows={3} />
       ) : forges.status === "error" ? (
         <ErrorState title="Couldn't check source control" failure={forges.error} onRetry={forges.reload} />
       ) : (
-        <SettingGroup title="Hosts">
-          <SettingRow title={settingsLabel("source-control-check-again")} description="Finds a command line tool or sign-in that has changed.">
-            <Button small onClick={forges.reload}>
-              Rescan
-            </Button>
-          </SettingRow>
+        <div className="set-tbl" role="table" aria-label="Hosts">
           {forges.data.map((forge) => (
-            <SettingRow
-              key={forge.id}
-              title={forge.name}
-              description={forge.problem ?? (forge.accounts.join(", ") || undefined)}
-            >
-              <Pill tone={forge.signed_in ? "accent" : forge.installed ? "warn" : "neutral"}>
-                {forge.signed_in ? "Signed in" : forge.installed ? "Signed out" : "Not installed"}
-              </Pill>
-            </SettingRow>
+            <div key={forge.id} role="row" className="set-tr" style={{ gridTemplateColumns: "28px minmax(0, 1fr) 150px" }}>
+              <span role="cell"><span className="set-mark">{forge.name.charAt(0).toUpperCase()}</span></span>
+              <span role="cell"><span className="name">{forge.name}</span>{forge.problem ?? forge.accounts.join(", ") ? <><br /><span className="sub">{forge.problem ?? forge.accounts.join(", ")}</span></> : null}</span>
+              <span role="cell">
+                {forge.signed_in ? <span className="set-pill"><Check size={13} aria-hidden />Signed in</span>
+                  : <span className="set-pill">{forge.installed ? "Not signed in" : "Not installed"}</span>}
+              </span>
+            </div>
           ))}
-        </SettingGroup>
+        </div>
       )}
     </>
   );

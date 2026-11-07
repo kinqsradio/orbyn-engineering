@@ -41,7 +41,7 @@ it("draws shortcuts as key caps and names the command a shortcut clashes with", 
   });
   render(<KeybindingsSection />);
   expect(await screen.findByText("Command palette")).toBeVisible();
-  expect(screen.getByText("Clashes with Delete")).toBeVisible();
+  expect(screen.getByText(/Archive thread and Delete both use/)).toBeVisible();
   await userEvent.type(screen.getByRole("textbox", { name: "Filter keybindings" }), "archive");
   expect(screen.queryByText("Command palette")).toBeNull();
 });

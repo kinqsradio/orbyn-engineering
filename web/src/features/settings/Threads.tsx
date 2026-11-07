@@ -1,11 +1,10 @@
 import { settingsLabel } from "./settingsSearch";
-import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { api } from "../../api/client";
 import type { ServerSettings } from "../../api/types";
 import type { SnoozePreset } from "../../generated/SnoozePreset";
 import { toFailure, useAsync } from "../../lib/useAsync";
-import { Button, IconButton } from "../../ui/controls";
+import { Button } from "../../ui/controls";
 import { ErrorState, Loading } from "../../ui/states";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { useUi } from "../../state/ui";
@@ -26,22 +25,30 @@ const MAX_PRESETS = 8;
 const MAX_MINUTES = 30 * 24 * 60;
 
 /** The choices a thread's Snooze menu offers, in this order. */
+const lengthText = (minutes: number) =>
+  minutes % 60 === 0 ? `${minutes / 60} ${minutes === 60 ? "hour" : "hours"}` : `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+
+/** The choices a thread's Snooze menu offers, in this order. */
 function SnoozePresets({ presets, save }: { presets: SnoozePreset[]; save(next: SnoozePreset[]): void }) {
   const [label, setLabel] = useState("");
   const [minutes, setMinutes] = useState("");
   const valid = label.trim() !== "" && Number(minutes) > 0 && Number(minutes) <= MAX_MINUTES;
   return (
-    <SettingGroup title="Snooze presets">
-      {presets.map((preset) => (
-        <SettingRow key={preset.label} title={preset.label} description={`${preset.minutes} minutes`}>
-          <IconButton label={`Remove ${preset.label}`} onClick={() => save(presets.filter((entry) => entry !== preset))}>
-            <Trash2 size={14} aria-hidden />
-          </IconButton>
-        </SettingRow>
-      ))}
-      <SettingRow title={settingsLabel("threads-add-a-preset")} description={`Up to ${MAX_PRESETS}, each up to 30 days.`}>
+    <>
+      <p className="set-grp">Snooze presets</p>
+      <SettingGroup>
+        {presets.map((preset) => (
+          <SettingRow key={preset.label} title={preset.label}>
+            <span className="t3">{lengthText(preset.minutes)}</span>
+            <Button small tone="quiet" aria-label={`Remove ${preset.label}`} onClick={() => save(presets.filter((entry) => entry !== preset))}>
+              Remove
+            </Button>
+          </SettingRow>
+        ))}
+      </SettingGroup>
+      <div className="set-add" aria-label={settingsLabel("threads-add-a-preset")} id="threads-add-a-preset" tabIndex={-1}>
         <input aria-label="Preset name" placeholder="Name" value={label} onChange={(event) => setLabel(event.target.value)} />
-        <input aria-label="Preset minutes" type="number" min="1" placeholder="Minutes" value={minutes} onChange={(event) => setMinutes(event.target.value)} />
+        <input aria-label="Preset minutes" type="number" min="1" placeholder="Length of time" value={minutes} onChange={(event) => setMinutes(event.target.value)} />
         <Button
           small
           disabled={!valid || presets.length >= MAX_PRESETS}
@@ -53,8 +60,8 @@ function SnoozePresets({ presets, save }: { presets: SnoozePreset[]; save(next: 
         >
           Add
         </Button>
-      </SettingRow>
-    </SettingGroup>
+      </div>
+    </>
   );
 }
 
@@ -95,41 +102,26 @@ export function ThreadsSection() {
         { key: "auto_thread_titles", title: settingsLabel("threads-name-new-threads"), description: "From the first message" },
       ] }]} />
       <HistoryImport inSettings />
-      <PreferenceGroups groups={[{ title: "Auto-settle", rows: [
+      <PreferenceGroups groups={[{ title: "", rows: [
         { key: "auto_settle_after_days", title: settingsLabel("threads-settle-idle-threads"),
-          description: "Move finished threads into Settled after a quiet period.",
+          description: "Move a thread out of the way after it has been idle",
           options: AFTER_DAYS.map((entry) => ({ value: entry.value === null ? "" : String(entry.value), label: entry.label })),
           parse: (value) => value === "" ? null : Number(value) },
         { key: "auto_settle_on_merge", title: settingsLabel("threads-settle-on-merge"),
-          description: "Settle a thread when its pull request merges." },
+          description: "When its pull request merges" },
         { key: "auto_settle_keep_pull_requests", title: settingsLabel("threads-keep-pull-requests"),
-          description: "Leave a thread whose pull request is still open out of idle settling." },
-      ] }, { title: "Agents", rows: [
+          description: "Never settle a thread whose pull request is still open" },
         { key: "enable_agent_browser_access", title: settingsLabel("threads-agent-browser-access"),
-          description: "Lets agents open and drive pages in the Browser panel. Off refuses their browser tools." },
+          description: "Agents can open pages and click in the Browser panel" },
         { key: "continue_threads_after_update", title: settingsLabel("threads-continue-after-update"),
-          description: "After Orbyn restarts, pick up the threads the restart interrupted." },
-      ] }, { title: "Titles", rows: [
+          description: "Resume threads the update interrupted" },
         { key: "project_title_instructions", title: settingsLabel("threads-title-instructions"),
-          description: "Guidance used when a thread title is generated.", multiline: true },
+          description: "How a thread’s name is written", multiline: true },
+        { key: "text_generation_model", title: settingsLabel("threads-title-model") },
       ] }]} />
       <fieldset className="preference-control" disabled={Boolean(projectScoped)}>
         <SnoozePresets presets={data.snooze_presets} save={(snooze_presets) => save({ ...data, snooze_presets })} />
       </fieldset>
-      <PreferenceGroups
-        groups={[
-          {
-            title: "Title generation",
-            rows: [
-              {
-                key: "text_generation_model",
-                title: settingsLabel("threads-title-model"),
-                description: "A model ID. Empty uses the engine's small model.",
-              },
-            ],
-          },
-        ]}
-      />
       {error ? (
         <p className="field-error" role="alert">
           {error}

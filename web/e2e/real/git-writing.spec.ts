@@ -95,7 +95,7 @@ test("writing settings save and inherit through the real service at narrow width
   await expect(mode).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("writing-settings.png"), fullPage: true });
-  await page.getByRole("button", { name: "Reset Commit messages to default" }).click();
+  await page.getByRole("button", { name: "Reset Writing style to default" }).click();
   await expect(mode).toHaveValue("repo_conventions");
   await expect(instructions).toHaveCount(0);
 });

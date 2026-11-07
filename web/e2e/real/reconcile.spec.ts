@@ -196,10 +196,7 @@ test("the keybindings page rebinds and the new key runs", async ({ page }) => {
 
 test("project defaults, scripts and the worktree settings save", async ({ page }) => {
   await page.goto(`${service.page}#/settings/worktrees`);
-  const branchDisclosure = page.locator(".collapsible-panel")
-    .filter({ has: page.locator("#worktrees-naming") }).locator("..");
-  await branchDisclosure.getByRole("button", { name: "Advanced", exact: true }).click();
-  await page.getByRole("combobox", { name: "Naming" }).selectOption("semantic");
+  await page.getByRole("radio", { name: "Semantic", exact: true }).click();
   await expect
     .poll(async () => {
       const prefs = await service.api<{ key: string; value: unknown }[]>("GET", "/api/preferences");
