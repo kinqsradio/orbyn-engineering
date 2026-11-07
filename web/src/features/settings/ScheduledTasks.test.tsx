@@ -30,6 +30,14 @@ it("opens the linked task's page on its Runs tab, and the editor only from Edit"
   expect(await screen.findByRole("dialog", { name: "Edit scheduled task" })).toBeVisible();
 });
 
+it("opens the editor straight away from an Edit link", async () => {
+  ready();
+  window.location.hash = "#/settings/tasks?task=task-review&edit=1";
+  installMockFetch();
+  render(<ScheduledTasksSection />);
+  expect(await screen.findByRole("dialog", { name: "Edit scheduled task" })).toBeVisible();
+});
+
 it("drops a link to a task that no longer exists without opening an editor", async () => {
   ready();
   window.location.hash = "#/settings/tasks?task=gone";

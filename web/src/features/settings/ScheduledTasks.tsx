@@ -378,6 +378,7 @@ function TasksView({ page }: { page: boolean }) {
   const projects = useVisibleProjects();
   const route = useRoute();
   const linkedId = route.name === "settings" ? route.task : undefined;
+  const linkedEdit = route.name === "settings" && route.edit === true;
   const [openedLink, setOpenedLink] = useState<string | undefined>(undefined);
 
   useEffect(() => {
@@ -389,14 +390,18 @@ function TasksView({ page }: { page: boolean }) {
     setOpenedLink(linkedId);
     const task = tasks.data.find((entry) => entry.id === linkedId);
     if (!task) navigate({ name: "settings", section: "tasks" });
+    else if (linkedEdit) setEditing(task);
     else {
-      // The link opens the task's page, on its Runs tab; the editor opens only from Edit.
+      // A plain link opens the task's page, on its Runs tab; the editor opens only from Edit.
       setOpened(task.id);
       navigate({ name: "settings", section: "tasks" });
     }
-  }, [linkedId, openedLink, tasks.status, tasks.data]);
+  }, [linkedId, linkedEdit, openedLink, tasks.status, tasks.data]);
 
-  const closeEditor = () => setEditing(null);
+  const closeEditor = () => {
+    setEditing(null);
+    if (linkedId !== undefined) navigate({ name: "settings", section: "tasks" });
+  };
 
   const act = (work: Promise<unknown>) =>
     work.then(tasks.reload, (failure: unknown) => pushToast(`Couldn't do that. ${toFailure(failure).message}`));

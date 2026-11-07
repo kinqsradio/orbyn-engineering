@@ -187,7 +187,7 @@ test("a task bound to a thread pauses, runs and edits from the details card", as
   await expect.poll(async () => (await stored())?.last_status).toBe("started");
 
   await details.getByRole("button", { name: "Edit Nightly review" }).click();
-  await expect(page).toHaveURL((url) => url.hash === `#/settings/tasks?task=${task.id}`);
+  await expect(page).toHaveURL((url) => url.hash === `#/settings/tasks?task=${task.id}&edit=1`);
   const edit = page.getByRole("dialog", { name: "Edit scheduled task" });
   await expect(edit.getByLabel("Name")).toHaveValue("Nightly review");
   await edit.getByLabel("Name").fill("Nightly check");
