@@ -221,6 +221,8 @@ pub struct BrowserSession {
     _child: Option<ManagedChild>,
     /// Events a caller asked to keep, which would otherwise pass unread between replies.
     kept: Vec<Value>,
+    /// Navigation signals received before the corresponding command reply.
+    navigation_events: Vec<Value>,
 }
 
 /// The events a preview's bridge reads: a file chooser and a download's progress.
@@ -252,6 +254,21 @@ fn keep_event(kept: &mut Vec<Value>, event: Value) {
     kept.push(event);
 }
 
+fn navigation_finished(event: &Value, frame: &str, loader: Option<&str>) -> bool {
+    let params = &event["params"];
+    if params["frameId"].as_str() != Some(frame) {
+        return false;
+    }
+    match loader {
+        Some(loader) => {
+            event["method"] == "Page.lifecycleEvent"
+                && params["name"] == "load"
+                && params["loaderId"].as_str() == Some(loader)
+        }
+        None => event["method"] == "Page.navigatedWithinDocument",
+    }
+}
+
 impl BrowserSession {
     pub async fn launch(path: &Path, profile: &Path, options: LaunchOptions) -> Result<Self> {
         std::fs::create_dir_all(profile)?;
@@ -274,10 +291,8 @@ impl BrowserSession {
         #[cfg(unix)]
         command.process_group(0);
         crate::host::child_env::for_tool(command.as_std_mut());
-        let child = ManagedChild::spawn(command)?;
-        let url = tokio::time::timeout(START_TIMEOUT, read_port_file(&port_file))
-            .await
-            .map_err(|_| failed("the browser did not open its debugging port"))?;
+        let mut child = ManagedChild::spawn(command)?;
+        let url = wait_for_port(&mut child, &port_file).await?;
         Self::connect(&url, Some(child)).await
     }
 
@@ -292,6 +307,7 @@ impl BrowserSession {
             on_document_change: None,
             _child: child,
             kept: Vec::new(),
+            navigation_events: Vec::new(),
         };
         let targets = session.browser_call("Target.getTargets", json!({})).await?;
         let page = targets
@@ -325,6 +341,9 @@ impl BrowserSession {
             .ok_or_else(|| failed("no page session"))?
             .to_owned();
         session.call("Page.enable", json!({})).await?;
+        session
+            .call("Page.setLifecycleEventsEnabled", json!({ "enabled": true }))
+            .await?;
         let tree = session.call("Page.getFrameTree", json!({})).await?;
         if let Some(id) = tree.pointer("/frameTree/frame/id").and_then(Value::as_str) {
             session.document.frame = id.to_owned();
@@ -341,11 +360,21 @@ impl BrowserSession {
     }
 
     fn note_document(&mut self, event: &Value) {
-        if event.get("sessionId").and_then(Value::as_str) == Some(self.session_id.as_str())
-            && self.document.note(event)
-            && let Some(notify) = &self.on_document_change
-        {
-            notify();
+        if event.get("sessionId").and_then(Value::as_str) == Some(self.session_id.as_str()) {
+            if self.document.note(event)
+                && let Some(notify) = &self.on_document_change
+            {
+                notify();
+            }
+            if matches!(
+                event.get("method").and_then(Value::as_str),
+                Some("Page.lifecycleEvent" | "Page.navigatedWithinDocument")
+            ) {
+                if self.navigation_events.len() == MAX_KEPT {
+                    self.navigation_events.remove(0);
+                }
+                self.navigation_events.push(event.clone());
+            }
         }
     }
 
@@ -450,12 +479,48 @@ impl BrowserSession {
     }
 
     pub async fn navigate(&mut self, url: &str) -> Result<Value> {
+        self.navigation_events.clear();
         let reply = self.call("Page.navigate", json!({ "url": url })).await?;
         if let Some(error) = reply.get("errorText").and_then(Value::as_str) {
             return Err(failed(error));
         }
-        self.wait_for_load(LOAD_TIMEOUT).await;
+        let frame = reply.get("frameId").and_then(Value::as_str).unwrap_or("");
+        let loader = reply.get("loaderId").and_then(Value::as_str);
+        self.wait_for_navigation(frame, loader).await;
         Ok(json!({ "url": self.current_url().await? }))
+    }
+
+    /// Correlate readiness with this navigation, including signals received while
+    /// awaiting Page.navigate's reply. A stale load from another loader is not readiness.
+    async fn wait_for_navigation(&mut self, frame: &str, loader: Option<&str>) {
+        let matches = |event: &Value| {
+            event.get("sessionId").and_then(Value::as_str) == Some(self.session_id.as_str())
+                && navigation_finished(event, frame, loader)
+        };
+        if self.navigation_events.iter().any(matches) {
+            self.navigation_events.clear();
+            return;
+        }
+        self.navigation_events.clear();
+        let _ = tokio::time::timeout(LOAD_TIMEOUT, async {
+            while let Some(Ok(message)) = self.socket.next().await {
+                let Ok(text) = message.to_text() else {
+                    continue;
+                };
+                let Ok(event) = serde_json::from_str::<Value>(text) else {
+                    continue;
+                };
+                self.note_document(&event);
+                if event.get("sessionId").and_then(Value::as_str) == Some(self.session_id.as_str())
+                    && navigation_finished(&event, frame, loader)
+                {
+                    return;
+                }
+                keep_event(&mut self.kept, event);
+            }
+        })
+        .await;
+        self.navigation_events.clear();
     }
 
     /// Load completion is best effort; a slow page is still navigated.
@@ -720,9 +785,178 @@ async fn read_port_file(path: &Path) -> String {
     }
 }
 
+async fn wait_for_port(child: &mut ManagedChild, path: &Path) -> Result<String> {
+    tokio::time::timeout(START_TIMEOUT, async {
+        tokio::select! {
+            biased;
+            status = child.wait() => Err(failed(format!("the browser exited before opening its debugging port: {}", status.map_err(failed)?))),
+            url = read_port_file(path) => Ok(url),
+        }
+    })
+    .await
+    .map_err(|_| failed("the browser did not open its debugging port"))?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn navigation_observes_load_before_the_command_reply() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (tcp, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(tcp).await.unwrap();
+            while let Some(Ok(frame)) = socket.next().await {
+                let request: Value = serde_json::from_str(frame.to_text().unwrap()).unwrap();
+                let result = match request["method"].as_str().unwrap() {
+                    "Target.getTargets" => {
+                        json!({"targetInfos": [{"type": "page", "targetId": "target"}]})
+                    }
+                    "Target.attachToTarget" => json!({"sessionId": "session"}),
+                    "Page.getFrameTree" => json!({"frameTree": {"frame": {"id": "main"}}}),
+                    "Page.navigate" => {
+                        socket.send(Message::text(json!({"sessionId":"session", "method":"Page.loadEventFired", "params":{}}).to_string())).await.unwrap();
+                        socket.send(Message::text(json!({"sessionId":"session", "method":"Page.lifecycleEvent", "params":{"frameId":"main", "loaderId":"old", "name":"load"}}).to_string())).await.unwrap();
+                        socket.send(Message::text(json!({"sessionId":"session", "method":"Page.lifecycleEvent", "params":{"frameId":"main", "loaderId":"loader", "name":"load"}}).to_string())).await.unwrap();
+                        json!({"frameId":"main", "loaderId":"loader"})
+                    }
+                    "Runtime.evaluate" => json!({"result":{"value":"http://example.test/"}}),
+                    _ => json!({}),
+                };
+                socket
+                    .send(Message::text(
+                        json!({"id":request["id"], "result":result}).to_string(),
+                    ))
+                    .await
+                    .unwrap();
+            }
+        });
+        let mut session = BrowserSession::connect(&format!("ws://{address}"), None)
+            .await
+            .unwrap();
+        let result = tokio::time::timeout(
+            Duration::from_secs(3),
+            session.navigate("http://example.test/"),
+        )
+        .await;
+        drop(session);
+        server.await.unwrap();
+        assert_eq!(result.unwrap().unwrap()["url"], "http://example.test/");
+    }
+
+    #[test]
+    fn navigation_readiness_matches_its_frame_and_loader() {
+        let event = json!({"method":"Page.lifecycleEvent", "params":{"frameId":"main", "loaderId":"current", "name":"load"}});
+        assert!(navigation_finished(&event, "main", Some("current")));
+        assert!(!navigation_finished(&event, "main", Some("old")));
+        assert!(!navigation_finished(&event, "child", Some("current")));
+        let same = json!({"method":"Page.navigatedWithinDocument", "params":{"frameId":"main"}});
+        assert!(navigation_finished(&same, "main", None));
+        assert!(!navigation_finished(&same, "child", None));
+    }
+
+    #[tokio::test]
+    async fn navigation_waits_for_its_own_later_load_or_same_document_event() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (tcp, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(tcp).await.unwrap();
+            let mut navigation = 0;
+            while let Some(Ok(frame)) = socket.next().await {
+                let request: Value = serde_json::from_str(frame.to_text().unwrap()).unwrap();
+                let result = match request["method"].as_str().unwrap() {
+                    "Target.getTargets" => {
+                        json!({"targetInfos":[{"type":"page","targetId":"target"}]})
+                    }
+                    "Target.attachToTarget" => json!({"sessionId":"session"}),
+                    "Page.getFrameTree" => json!({"frameTree":{"frame":{"id":"main"}}}),
+                    "Page.navigate" => {
+                        navigation += 1;
+                        let result = if navigation == 1 {
+                            json!({"frameId":"main","loaderId":"new"})
+                        } else {
+                            json!({"frameId":"main"})
+                        };
+                        socket
+                            .send(Message::text(
+                                json!({"id":request["id"],"result":result}).to_string(),
+                            ))
+                            .await
+                            .unwrap();
+                        let unrelated = if navigation == 1 {
+                            json!({"sessionId":"session","method":"Page.lifecycleEvent","params":{"frameId":"main","loaderId":"old","name":"load"}})
+                        } else {
+                            json!({"sessionId":"other","method":"Page.navigatedWithinDocument","params":{"frameId":"main"}})
+                        };
+                        socket
+                            .send(Message::text(unrelated.to_string()))
+                            .await
+                            .unwrap();
+                        assert!(
+                            tokio::time::timeout(Duration::from_millis(50), socket.next())
+                                .await
+                                .is_err(),
+                            "unrelated event completed navigation"
+                        );
+                        let matching = if navigation == 1 {
+                            json!({"sessionId":"session","method":"Page.lifecycleEvent","params":{"frameId":"main","loaderId":"new","name":"load"}})
+                        } else {
+                            json!({"sessionId":"session","method":"Page.navigatedWithinDocument","params":{"frameId":"main"}})
+                        };
+                        socket
+                            .send(Message::text(matching.to_string()))
+                            .await
+                            .unwrap();
+                        continue;
+                    }
+                    "Runtime.evaluate" => json!({"result":{"value":"http://example.test/"}}),
+                    _ => json!({}),
+                };
+                socket
+                    .send(Message::text(
+                        json!({"id":request["id"],"result":result}).to_string(),
+                    ))
+                    .await
+                    .unwrap();
+            }
+        });
+        let mut session = BrowserSession::connect(&format!("ws://{address}"), None)
+            .await
+            .unwrap();
+        for url in ["http://example.test/", "http://example.test/#anchor"] {
+            tokio::time::timeout(Duration::from_secs(3), session.navigate(url))
+                .await
+                .unwrap()
+                .unwrap();
+        }
+        drop(session);
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn browser_exit_during_startup_is_reported_without_waiting_for_timeout() {
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command
+            .arg("--list")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        #[cfg(unix)]
+        command.process_group(0);
+        let mut child = ManagedChild::spawn(command).unwrap();
+        let path = std::env::temp_dir().join(format!("missing-port-{}", crate::util::new_id()));
+        let result = tokio::time::timeout(Duration::from_secs(5), wait_for_port(&mut child, &path))
+            .await
+            .unwrap();
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("exited before opening its debugging port")
+        );
+    }
 
     #[tokio::test]
     async fn navigation_during_dispatch_and_capture_is_seen_before_the_reply() {

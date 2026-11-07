@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -414,6 +415,7 @@ pub(crate) struct Tab {
     pub(crate) info: Mutex<PreviewTab>,
     pub(crate) session: tokio::sync::Mutex<BrowserSession>,
     frames: broadcast::Sender<Arc<str>>,
+    initial_frame_pending: AtomicBool,
     pointers: broadcast::Sender<PreviewPointer>,
     trace: Mutex<crate::browser::preview_trace::Trace>,
     recording: Mutex<Option<Arc<Recording>>>,
@@ -640,7 +642,6 @@ async fn pump(tab: Arc<Tab>) {
     let mut since_history = Instant::now();
     let mut last_view = Instant::now() - FRAME_EVERY;
     let mut crashes = Crashes::default();
-    let mut watching = 0;
     loop {
         tokio::select! {
             () = tab.stop.cancelled() => {
@@ -666,10 +667,11 @@ async fn pump(tab: Arc<Tab>) {
             None => false,
         };
         let viewers = tab.frames.receiver_count();
-        if viewers > watching {
+        // Consume before capture: a subscription during capture stays pending
+        // for the next tick, even when the viewer count does not change.
+        if tab.initial_frame_pending.swap(false, Ordering::AcqRel) {
             last.clear();
         }
-        watching = viewers;
         let view_due = viewers > 0 && last_view.elapsed() >= FRAME_EVERY;
         if !view_due && !record_due {
             continue;
@@ -775,7 +777,11 @@ impl PreviewManager {
 
     /// Everything a new viewer needs: the stream of frames.
     pub fn subscribe(&self, thread_id: &str, id: &str) -> Result<broadcast::Receiver<Arc<str>>> {
-        Ok(self.tab(thread_id, id)?.frames.subscribe())
+        let tab = self.tab(thread_id, id)?;
+        let receiver = tab.frames.subscribe();
+        // Register first so the requested frame cannot precede this receiver.
+        tab.initial_frame_pending.store(true, Ordering::Release);
+        Ok(receiver)
     }
 
     /// A separate event feed keeps legacy JPEG viewers compatible.
@@ -1371,6 +1377,7 @@ impl Core {
             }),
             session: tokio::sync::Mutex::new(session),
             frames,
+            initial_frame_pending: AtomicBool::new(false),
             pointers,
             trace: Mutex::new(crate::browser::preview_trace::Trace::default()),
             recording: Mutex::new(None),
@@ -1741,6 +1748,7 @@ mod tests {
             ),
             session: tokio::sync::Mutex::new(session),
             frames,
+            initial_frame_pending: AtomicBool::new(false),
             pointers,
             trace: Mutex::new(crate::browser::preview_trace::Trace::default()),
             recording: Mutex::new(None),
@@ -2034,6 +2042,126 @@ mod tests {
         drop(manager);
         server.await.unwrap();
         let _ = std::fs::remove_dir_all(folder);
+    }
+
+    #[tokio::test]
+    async fn same_count_viewer_turnover_receives_the_static_frame() {
+        use futures_util::{SinkExt, StreamExt};
+        use tokio_tungstenite::tungstenite::Message;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (capturing, mut captures) =
+            tokio::sync::mpsc::channel::<tokio::sync::oneshot::Sender<()>>(1);
+        let server = tokio::spawn(async move {
+            let (tcp, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(tcp).await.unwrap();
+            while let Some(Ok(frame)) = socket.next().await {
+                let Ok(text) = frame.to_text() else { continue };
+                let request: Value = serde_json::from_str(text).unwrap();
+                let result = match request["method"].as_str().unwrap() {
+                    "Target.getTargets" => {
+                        json!({"targetInfos":[{"type":"page","targetId":"target"}]})
+                    }
+                    "Target.attachToTarget" => json!({"sessionId":"session"}),
+                    "Page.getFrameTree" => json!({"frameTree":{"frame":{"id":"main"}}}),
+                    "Page.captureScreenshot" => {
+                        let (release, released) = tokio::sync::oneshot::channel();
+                        if capturing.send(release).await.is_err() || released.await.is_err() {
+                            break;
+                        }
+                        json!({"data":"static-frame"})
+                    }
+                    _ => json!({}),
+                };
+                if socket
+                    .send(Message::text(
+                        json!({"id":request["id"],"result":result}).to_string(),
+                    ))
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        });
+        let session = BrowserSession::connect(&format!("ws://{address}"), None)
+            .await
+            .unwrap();
+        let tab = fixture_tab(session, "none");
+        let manager = PreviewManager::default();
+        lock(&manager.tabs).insert("tab".into(), tab.clone());
+        let mut first = manager.subscribe("thread", "tab").unwrap();
+        let pumping = tokio::spawn(pump(tab.clone()));
+
+        let result = tokio::time::timeout(Duration::from_secs(5), async {
+            captures.recv().await.unwrap().send(()).unwrap();
+            assert_eq!(first.recv().await.unwrap().as_ref(), "static-frame");
+
+            // The next capture has already sampled one viewer. Replace that
+            // viewer before its reply, so the pump never observes a count change.
+            let second = captures.recv().await.unwrap();
+            drop(first);
+            let mut replacement = manager.subscribe("thread", "tab").unwrap();
+            assert_eq!(tab.frames.receiver_count(), 1);
+            second.send(()).unwrap();
+
+            // Observing each later screenshot proves the preceding pump iteration
+            // finished. No sleep guesses whether the same-count frames were sent.
+            captures.recv().await.unwrap().send(()).unwrap();
+            let fourth = captures.recv().await.unwrap();
+            let same_count = replacement.try_recv();
+
+            // A true count increase must still deliver the identical frame. The
+            // fourth capture sampled one viewer, so release it and then the fifth.
+            let mut additional = manager.subscribe("thread", "tab").unwrap();
+            assert_eq!(tab.frames.receiver_count(), 2);
+            fourth.send(()).unwrap();
+            captures.recv().await.unwrap().send(()).unwrap();
+            let recovered = replacement.recv().await.unwrap();
+            let increased = additional.recv().await.unwrap();
+
+            // The additional subscription was made during capture. Once its
+            // initial frame is delivered, stable viewers suppress duplicates.
+            let sixth = captures.recv().await.unwrap();
+            assert!(matches!(
+                replacement.try_recv(),
+                Err(broadcast::error::TryRecvError::Empty)
+            ));
+            assert!(matches!(
+                additional.try_recv(),
+                Err(broadcast::error::TryRecvError::Empty)
+            ));
+            sixth.send(()).unwrap();
+            let _seventh = captures.recv().await.unwrap();
+            assert!(matches!(
+                replacement.try_recv(),
+                Err(broadcast::error::TryRecvError::Empty)
+            ));
+            assert!(matches!(
+                additional.try_recv(),
+                Err(broadcast::error::TryRecvError::Empty)
+            ));
+            (same_count, recovered, increased)
+        })
+        .await;
+
+        // Always release the synthetic owners before asserting the regression.
+        pumping.abort();
+        let _ = pumping.await;
+        drop(captures);
+        drop(manager);
+        drop(tab);
+        server.await.unwrap();
+        let (same_count, recovered, increased) = result.expect("controlled pump must progress");
+        assert_eq!(recovered.as_ref(), "static-frame");
+        assert_eq!(increased.as_ref(), "static-frame");
+        assert_eq!(
+            same_count
+                .expect("replacement viewer must receive the unchanged page")
+                .as_ref(),
+            "static-frame",
+        );
     }
 
     #[tokio::test]
