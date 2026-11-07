@@ -121,6 +121,8 @@ pub struct Core {
     pub http: reqwest::Client,
     pub recovery: Recovery,
     pub(crate) keybinding_writer: Mutex<()>,
+    /// Pull request details asked of GitHub, reused while a pull request is unchanged.
+    pub(crate) pull_details: Mutex<crate::source_control::forge_cache::DetailCache>,
     pub(crate) cleanup_policy_gate: tokio::sync::RwLock<()>,
     _lock: File,
 }
@@ -226,6 +228,7 @@ impl Core {
             http,
             recovery,
             keybinding_writer: Mutex::new(()),
+            pull_details: Mutex::new(Default::default()),
             cleanup_policy_gate: tokio::sync::RwLock::new(()),
             _lock: lock,
         };

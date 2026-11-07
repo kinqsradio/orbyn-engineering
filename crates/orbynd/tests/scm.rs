@@ -38,7 +38,12 @@ case "$1 $2" in
   "pr close") [ "$3" = 66 ] && { echo "refused" >&2; exit 1; } ;;
   "label list") echo '[{"name":"bug","description":"Broken"}]' ;;
   "api user") echo '{"login":"me"}' ;;
-  "api graphql") echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"id":"T1","isResolved":false,"path":"a.rs","line":2,"comments":{"nodes":[{"databaseId":11,"body":"line","author":{"login":"them"}}]}}]}}}}}' ;;
+  "api graphql") case "$*" in
+      *reviewRequests*) [ -f "$GH_FAIL" ] && { echo "Something went wrong" >&2; exit 1; }
+        [ -f "$GH_RATE" ] && { echo "GraphQL: API rate limit already exceeded" >&2; exit 1; }
+        echo '{"data":{"viewer":{"login":"me"},"repository":{"p3":{"createdAt":"2026-01-02T03:04:05Z","reviewRequests":{"nodes":[{"requestedReviewer":{"__typename":"User","login":"sam"}},{"requestedReviewer":{"__typename":"Team","slug":"core"}}]},"latestReviews":{"nodes":[{"author":null,"state":"APPROVED"},{"author":{"login":"me"},"state":"CHANGES_REQUESTED"}]},"comments":{"totalCount":2},"reviews":{"nodes":[{"comments":{"totalCount":3}},{"comments":{"totalCount":0}}]}},"p4":{"createdAt":"2026-02-02T00:00:00Z","reviewRequests":{"nodes":[]},"latestReviews":{"nodes":[]},"comments":{"totalCount":1},"reviews":{"nodes":[]}}}}}' ;;
+      *) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"id":"T1","isResolved":false,"path":"a.rs","line":2,"comments":{"nodes":[{"databaseId":11,"body":"line","author":{"login":"them"}}]}}]}}}}}' ;;
+    esac ;;
   "auth status") echo "  Logged in to github.com account octo (keyring)" >&2 ;;
   "--version "*) echo "gh version 2.0" ;;
 esac
@@ -77,6 +82,10 @@ async fn fixture() -> Fixture {
         (
             "GH_STATE".to_owned(),
             state_file.to_string_lossy().into_owned(),
+        ),
+        (
+            "GH_RATE".to_owned(),
+            dir.path().join("gh-rate").to_string_lossy().into_owned(),
         ),
         (
             "GH_FAIL".to_owned(),
@@ -463,6 +472,18 @@ async fn lists_narrow_and_read_into_one_shape() {
     assert_eq!(pulls[0]["labels"][0], "bug");
     assert_eq!(pulls[0]["review_state"], "approved");
     let log = f.log();
+    // The base list asks for exactly the fields it always has, so it is as fast as before.
+    assert!(
+        log.contains(
+            "--json number,title,url,state,headRefName,baseRefName,author,isDraft,updatedAt,labels,reviewDecision,statusCheckRollup "
+        ),
+        "{log}"
+    );
+    assert!(pulls[0]["checks"]["failing_names"].is_array());
+    assert!(
+        !log.contains("graphql"),
+        "the base list never asks for details"
+    );
     assert!(log.contains("--state all"));
     assert!(
         log.contains("--search fix --author me --label bug"),
@@ -746,6 +767,7 @@ async fn forges_report_each_cli_and_bitbucket_says_why_not() {
     assert_eq!(github["installed"], true);
     assert_eq!(github["signed_in"], true);
     assert_eq!(github["accounts"][0], "octo");
+    assert_eq!(github["viewer"], "me");
     let bitbucket = forges
         .as_array()
         .unwrap()
@@ -913,4 +935,129 @@ async fn a_review_guide_is_written_by_a_linked_thread_that_reads_the_pull_reques
         !f.log().contains("pr comment"),
         "reading writes nothing to the forge"
     );
+}
+
+#[tokio::test]
+async fn details_come_from_one_batched_query_and_merge_per_pull_request() {
+    let f = fixture().await;
+    f.hosted();
+    let project = f.project().await;
+    let asked = |log: &str| {
+        log.lines()
+            .filter(|line| line.contains("reviewRequests"))
+            .count()
+    };
+    let body = |fresh: bool| {
+        json!({ "fresh": fresh, "pulls": [
+            { "project_id": project, "number": 3, "updated_at": "t1" },
+            { "project_id": project, "number": 4, "updated_at": "t1" },
+        ] })
+    };
+    let (code, response) = f.service.send("/api/pulls/details", body(false)).await;
+    assert_eq!(code, 200, "{response}");
+    let first = &response["details"][0];
+    assert_eq!(first["number"], 3);
+    assert_eq!(first["comment_count"], 5);
+    assert_eq!(first["requested_reviewers"][1]["kind"], "team");
+    assert_eq!(first["viewer_review_state"], "changes_requested");
+    assert_eq!(response["details"][1]["comment_count"], 1);
+    assert_eq!(response["paused"].as_array().unwrap().len(), 0);
+    assert_eq!(asked(&f.log()), 1);
+    // Known details are reused, a changed pull request is asked again, fresh recounts.
+    f.service.send("/api/pulls/details", body(false)).await;
+    assert_eq!(asked(&f.log()), 1, "an unchanged row reuses its details");
+    let changed = json!({ "pulls": [{ "project_id": project, "number": 3, "updated_at": "t2" }] });
+    f.service.send("/api/pulls/details", changed).await;
+    assert_eq!(asked(&f.log()), 2, "a changed updated_at asks again");
+    f.service.send("/api/pulls/details", body(true)).await;
+    assert_eq!(asked(&f.log()), 3, "fresh bypasses the cache");
+}
+
+#[tokio::test]
+async fn details_repeats_count_once_extras_are_ignored_and_queries_are_batched() {
+    let f = fixture().await;
+    f.hosted();
+    let project = f.project().await;
+    // 3 twice, then 4..=121: 119 distinct rows asked, the first 100 kept.
+    let mut numbers = vec![3, 3];
+    numbers.extend(4..=121);
+    let pulls: Vec<Value> = numbers
+        .iter()
+        .map(|n| json!({ "project_id": project, "number": n }))
+        .collect();
+    let (code, response) = f
+        .service
+        .send("/api/pulls/details", json!({ "pulls": pulls }))
+        .await;
+    assert_eq!(code, 200, "{response}");
+    assert_eq!(response["details"].as_array().unwrap().len(), 2);
+    let log = f.log();
+    let queries: Vec<&str> = log
+        .lines()
+        .filter(|l| l.contains("reviewRequests"))
+        .collect();
+    assert_eq!(queries.len(), 4, "100 rows make four batches of 25");
+    assert!(
+        queries
+            .iter()
+            .all(|q| q.matches("pullRequest(").count() == 25)
+    );
+    assert!(log.contains("p102:") && !log.contains("p103:"));
+}
+
+#[tokio::test]
+async fn a_failed_query_keeps_the_cached_rows_and_leaves_out_the_rest() {
+    let f = fixture().await;
+    f.hosted();
+    let project = f.project().await;
+    let row = |n: u64| json!({ "project_id": project, "number": n, "updated_at": "t1" });
+    f.service
+        .send("/api/pulls/details", json!({ "pulls": [row(3)] }))
+        .await;
+    std::fs::write(f._dir.path().join("gh-fail"), "").unwrap();
+    let (code, response) = f
+        .service
+        .send("/api/pulls/details", json!({ "pulls": [row(3), row(4)] }))
+        .await;
+    assert_eq!(code, 200, "{response}");
+    let numbers: Vec<u64> = response["details"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["number"].as_u64().unwrap())
+        .collect();
+    assert_eq!(
+        numbers,
+        vec![3],
+        "the cached row stays, the asked one is absent"
+    );
+    assert_eq!(response["paused"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn a_spent_rate_limit_withholds_every_detail_and_names_them() {
+    let f = fixture().await;
+    f.hosted();
+    let project = f.project().await;
+    let body = json!({ "pulls": [{ "project_id": project, "number": 3 }] });
+    std::fs::write(f._dir.path().join("gh-rate"), "").unwrap();
+    let (_, limited) = f.service.send("/api/pulls/details", body.clone()).await;
+    assert_eq!(
+        limited["details"].as_array().unwrap().len(),
+        0,
+        "never partial"
+    );
+    let paused: Vec<&str> = limited["paused"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| n.as_str().unwrap())
+        .collect();
+    assert!(paused.contains(&"comment_count") && paused.contains(&"requested_reviewers"));
+    // The pause holds without asking GitHub again.
+    std::fs::remove_file(f._dir.path().join("gh-rate")).unwrap();
+    let before = f.log();
+    let (_, again) = f.service.send("/api/pulls/details", body).await;
+    assert_eq!(again["paused"], limited["paused"]);
+    assert_eq!(f.log(), before);
 }

@@ -921,6 +921,88 @@ pub struct PullRequest {
     /// `pass`, `fail`, `pending` or `none`.
     #[serde(default)]
     pub checks_state: Option<String>,
+    /// Check counts, read from the check data the list already carries; `None` when
+    /// the forge's list has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub checks: Option<PullChecks>,
+}
+}
+
+wire! {
+pub struct RequestedReviewer {
+    /// A login, or a team's slug.
+    pub name: String,
+    /// `user` or `team`.
+    pub kind: String,
+}
+}
+
+wire! {
+/// Per-state counts over a pull request's checks. Skipped and neutral checks count
+/// only in `total`.
+pub struct PullChecks {
+    pub total: u32,
+    pub passing: u32,
+    pub failing: u32,
+    pub running: u32,
+    /// Names of failing checks, at most 20.
+    pub failing_names: Vec<String>,
+}
+}
+
+wire! {
+/// Asks for the details of listed pull requests, all projects in one call.
+pub struct PullDetailsRequest {
+    pub pulls: Vec<PullDetailsRef>,
+    /// A refresh the person started: recount instead of reusing known details.
+    #[serde(default)]
+    pub fresh: bool,
+}
+}
+
+wire! {
+pub struct PullDetailsRef {
+    pub project_id: String,
+    pub number: u64,
+    /// The row's `updated_at`, which says whether known details still hold.
+    #[serde(default)]
+    pub updated_at: Option<String>,
+}
+}
+
+wire! {
+/// What the base list leaves out, for one pull request. A field is absent when it is
+/// unknown, never zero or partial.
+pub struct PullDetails {
+    pub project_id: String,
+    pub number: u64,
+    /// When the pull request was opened, as the forge writes it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub created_at: Option<String>,
+    /// Users and teams whose review is still asked for; empty when nobody is asked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub requested_reviewers: Option<Vec<RequestedReviewer>>,
+    /// Conversation comments plus inline review comments.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub comment_count: Option<u32>,
+    /// The signed-in viewer's latest review: `approved`, `changes_requested`,
+    /// `commented`, `dismissed`, `pending` or `none`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub viewer_review_state: Option<String>,
+}
+}
+
+wire! {
+pub struct PullDetailsResponse {
+    pub details: Vec<PullDetails>,
+    /// Detail fields withheld because GitHub's rate limit is spent, named as they
+    /// appear on `PullDetails`; empty otherwise. No row carries a paused field.
+    pub paused: Vec<String>,
 }
 }
 
@@ -1312,6 +1394,10 @@ pub struct ForgeStatus {
     pub version: Option<String>,
     pub signed_in: bool,
     pub accounts: Vec<String>,
+    /// The login the CLI is signed in as; `None` when signed out or the forge has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub viewer: Option<String>,
     pub problem: Option<String>,
 }
 }

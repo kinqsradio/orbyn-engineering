@@ -553,6 +553,36 @@ merge, close and reopen; anything else is `422`. Arguments are passed directly a
 shell parses them, and comment and thread ids that go into API paths are checked to
 be plain.
 
+The base pull request list asks the forge CLI for exactly the fields it always has, so
+it is as fast as before, and it never waits on anything below. A row's `checks` (total,
+passing, failing, running and up to 20 failing names) are counted from the check data
+that call already carries; a check run counts as running until it is `COMPLETED`, then
+`FAILURE`, `CANCELLED`, `TIMED_OUT`, `ACTION_REQUIRED` and `STARTUP_FAILURE` fail,
+`SKIPPED`, `NEUTRAL` and `STALE` count only in the total, and a commit status of
+`PENDING` or `EXPECTED` is running. `checks_state` is derived from the same counts.
+
+The rest comes from `POST /api/pulls/details`, which the caller makes after it has shown
+the list. The body names the listed rows (`project_id`, `number` and the row's
+`updated_at`) and may set `fresh`. The answer holds, per row, `created_at`,
+`requested_reviewers` (users and teams), `comment_count` (conversation comments plus
+inline review comments) and `viewer_review_state` (the signed-in login's latest review, or
+`none`). GitHub answers all of a project's rows with one batched GraphQL request, which
+also names the viewer, so the review state needs no other call. A field is absent when
+unknown, never zero or partial. A row is left out whole when its project cannot be read,
+its own batch yields no data for it or its forge has no details; only GitHub has them.
+Repeated rows count once, at most 100 rows are read per request (later ones are ignored),
+and a project is asked in queries of at most 25 rows, so one failed or partly erroring
+query costs only the rows it did not return.
+
+Details known for a row are reused while its `updated_at` is unchanged (it moves with every
+comment, review or request) and for at most 10 minutes, so scheduled and background refreshes
+ask only for new or changed rows, and for none when every row is known. A refresh the person
+starts sets `fresh` and asks again for every row. If GitHub's rate limit is spent, the answer has
+no details, `paused` names every withheld field as it appears on the row (`created_at`,
+`requested_reviewers`, `viewer_review_state`, `comment_count`), and details are not asked
+for again for 2 minutes, `fresh` included. `ForgeStatus.viewer` is the login the CLI is
+signed in as, read on each `GET /api/forges` rescan.
+
 A git action runs commit, push and pull request in order, logs each phase as `CUSTOM
 git.phase`, and stops at the first failure; earlier phases stand. These are the
 user's own commands, so unlike Orbyn's internal reads they run commit hooks. All of
@@ -2573,6 +2603,7 @@ because browsers cannot set headers on them.
 | `GET, DELETE /api/threads/:id/pulls/:number` | `PullRequestDetail`; unlink |
 | `POST /api/threads/:id/pulls/:number/review`, `/merge` | Review and merge through the forge CLI |
 | `GET /api/pulls?state=&q=&author=&label=` | `PullList` across trusted projects; `failed` names any it could not read |
+| `POST /api/pulls/details` | `PullDetailsResponse` for listed rows: reviewers, viewer review, comment totals, opened time; `paused` names details withheld by a spent rate limit |
 | `GET /api/projects/:id/pulls?state=&q=&author=&label=` | `PullRequest[]` |
 | `POST /api/projects/:id/pulls/close` | `BulkClosePulls` to `PullBulkResult[]` |
 | `GET /api/projects/:id/pulls/reviewers`, `/labels` | `PullCandidate[]` |

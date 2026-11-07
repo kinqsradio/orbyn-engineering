@@ -19,8 +19,7 @@ other project space, is expected to follow this code.
 
 ## Reporting
 
-To report a problem to the maintainer, @kinqsradio, open an issue that asks for a
-private contact and gives no details; the maintainer replies with a private route.
+To report a problem to the maintainer, @kinqsradio, email hello@orbyn.dev.
 For content that breaks GitHub's own rules, you can also use GitHub's
 [report content](https://docs.github.com/en/communities/maintaining-your-safety-on-github/reporting-abuse-or-spam)
 option. Reports are kept confidential as far as the project allows.

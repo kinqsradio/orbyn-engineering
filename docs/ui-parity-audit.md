@@ -1,5 +1,8 @@
 # UI parity audit
 
+> Superseded by [design-inventory.md](design-inventory.md). Its pixel measurements
+> against T3 are no longer targets; the file is kept for its behaviour rows.
+
 Reference: T3 Code's source at `cadf7d5fe3`, plus earlier observations of a running
 copy at 1440x900 and 1728x1048 at DPR 2 and two saved captures. "Live" means measured
 in that running copy before 31 October 2026; it is no longer consulted. "Source" and
