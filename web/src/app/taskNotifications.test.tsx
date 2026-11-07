@@ -33,7 +33,7 @@ const poll = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync
 
 /** Every toast ever shown, since a toast fades on its own. */
 let shown: string[] = [];
-let stopListening = () => undefined;
+let stopListening: () => void = () => {};
 const texts = () => shown;
 
 it("says when a task's run finishes or fails, once, and not for what was already there", async () => {
