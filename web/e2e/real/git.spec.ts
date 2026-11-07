@@ -77,7 +77,7 @@ test("the branch row searches, creates and switches", async ({ page }) => {
   const dialog = page.getByRole("dialog", { name: "Switch branch" });
   await expect(dialog.getByLabel("Current branch")).toBeVisible();
   await dialog.getByLabel("Search branches").fill("topic");
-  await dialog.getByRole("button", { name: "Create topic" }).click();
+  await dialog.getByRole("button", { name: /^Create branch “topic”/ }).click();
   await expect(dialog).toBeHidden();
   expect(git(service.repo, "branch", "--show-current")).toBe("topic");
 

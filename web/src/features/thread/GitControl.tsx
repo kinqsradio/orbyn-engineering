@@ -271,6 +271,8 @@ function BranchDialog({ thread, onClose }: { thread: Thread; onClose(): void }) 
   const rows = useMemo(() => rowsFor(branches.data ?? [], query), [branches.data, query]);
   const name = query.trim();
   const exists = (branches.data ?? []).some((branch) => branch.name === name);
+  /** Nothing matches the text, so Enter creates it. */
+  const creating = Boolean(name) && !exists && rows.length === 0 && branches.status === "ready";
   const act = async (effect: Promise<void>) => {
     setBusy(true);
     setError(null);
@@ -294,6 +296,12 @@ function BranchDialog({ thread, onClose }: { thread: Thread; onClose(): void }) 
           value={query}
           autoFocus
           onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && creating && !busy) {
+              event.preventDefault();
+              void act(api.createBranch(thread.id, name));
+            }
+          }}
         />
       </label>
       <ul className="branch-list" aria-label="Branches">
@@ -308,14 +316,17 @@ function BranchDialog({ thread, onClose }: { thread: Thread; onClose(): void }) 
         ))}
         {name && !exists ? (
           <li>
-            <button type="button" disabled={busy} onClick={() => void act(api.createBranch(thread.id, name))}>
+            <button type="button" data-active={creating || undefined} disabled={busy} onClick={() => void act(api.createBranch(thread.id, name))}>
               <span className="branch-mark"><Plus size={14} aria-hidden /></span>
-              <span className="branch-name">Create {name}</span>
+              <span className="branch-name">Create branch “{name}”</span>
+              {creating ? <span className="branch-note">Enter</span> : null}
             </button>
           </li>
         ) : null}
       </ul>
-      <p className="branch-hint">Choosing a branch switches to it.</p>
+      <p className="branch-hint">
+        {creating ? "No branch matches. Enter creates it from the current branch and switches to it." : "Choosing a branch switches to it."}
+      </p>
       {error ? (
         <p className="field-error" role="alert">
           {error}
