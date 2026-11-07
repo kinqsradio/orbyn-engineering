@@ -1,9 +1,19 @@
 name: CI
 
+# Time budget: a pull request should turn green within 10 minutes. A run over it is a
+# defect to fix at its slowest step, not drift to accept.
+#
+# Pull requests run one lane: macOS, the platform the desktop app is used on most, and
+# Linux for the browser suite. Windows runs on main, nightly and on a pull request that
+# touches the desktop shell, the scripts or the workflows, where Windows-only breakage
+# lives. Main and nightly run every lane and every check.
 on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -17,7 +27,8 @@ jobs:
   # Decides which checks a pull request can affect. A required job never skips as
   # a whole (a skipped matrix job reports under its unexpanded name and blocks the
   # merge): its heavy steps skip instead, and the job reports success at once.
-  # Pushes to main, and any path this does not recognise, run everything.
+  # Pushes to main, nightly, manual runs and any path this does not recognise run
+  # everything on every OS.
   changes:
     name: Changes
     runs-on: ubuntu-24.04
@@ -26,6 +37,7 @@ jobs:
       web: ${{ steps.scope.outputs.web }}
       e2e: ${{ steps.scope.outputs.e2e }}
       desktop: ${{ steps.scope.outputs.desktop }}
+      windows: ${{ steps.scope.outputs.windows }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -37,7 +49,7 @@ jobs:
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.event.pull_request.base.sha }}
         run: |
-          all() { for k in rust web e2e desktop; do echo "$k=true" >> "$GITHUB_OUTPUT"; done; echo "Running every check: $1"; }
+          all() { for k in rust web e2e desktop windows; do echo "$k=true" >> "$GITHUB_OUTPUT"; done; echo "Running every check: $1"; }
           if [ "$EVENT" != "pull_request" ]; then all "not a pull request"; exit 0; fi
           if ! files=$(git diff --name-only "$BASE"...HEAD); then all "could not compare with the base"; exit 0; fi
           docs='^(docs/|[^/]+\.md$|\.github/ISSUE_TEMPLATE/|\.github/pull_request_template\.md$|\.github/(CODEOWNERS|labeler\.yml|labels\.json|dependabot\.yml)$)'
@@ -50,24 +62,72 @@ jobs:
           has() { printf '%s\n' "$code" | grep -Eq "$1" && echo true || echo false; }
           r=$(has "$rust"); w=$(has "$web"); d=$(has "$desktop")
           e=false; [ "$r" = true ] || [ "$w" = true ] && e=true
-          k=false; [ "$e" = true ] || [ "$d" = true ] && k=true
-          printf 'rust=%s\nweb=%s\ne2e=%s\ndesktop=%s\n' "$r" "$w" "$e" "$k" >> "$GITHUB_OUTPUT"
-          echo "rust=$r web=$w e2e=$e desktop=$k"
+          # The bundle holds the Rust service and the shell; a web-only change is covered
+          # by the Web job's build and the browser suite.
+          k=false; [ "$r" = true ] || [ "$d" = true ] && k=true
+          # Windows-only breakage lives in the shell, the scripts and the workflows.
+          x=$(has '^(desktop/|scripts/|\.github/workflows/)')
+          printf 'rust=%s\nweb=%s\ne2e=%s\ndesktop=%s\nwindows=%s\n' "$r" "$w" "$e" "$k" "$x" >> "$GITHUB_OUTPUT"
+          echo "rust=$r web=$w e2e=$e desktop=$k windows=$x"
           printf '%s\n' "$files"
+
+  # Format, types and lint, in about a minute, before anything builds. The heavy jobs
+  # wait for it and fail at once when it failed, so a typo never costs a full run.
+  lint:
+    name: Cheap checks
+    needs: changes
+    runs-on: ubuntu-24.04
+    env:
+      RUST: ${{ needs.changes.outputs.rust }}
+      WEB: ${{ needs.changes.outputs.web }}
+    steps:
+      - if: env.RUST == 'true' || env.WEB == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - if: env.RUST == 'true'
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: rustfmt
+      - if: env.RUST == 'true'
+        run: cargo fmt --all --check
+      - if: env.WEB == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - if: env.WEB == 'true'
+        run: npm ci
+        working-directory: web
+      - if: env.WEB == 'true'
+        run: npm run check
+        working-directory: web
 
   rust:
     name: Rust (${{ matrix.os }})
-    needs: changes
+    needs: [changes, lint]
+    if: ${{ !cancelled() }}
     runs-on: ${{ matrix.os }}
     env:
-      RUN: ${{ needs.changes.outputs.rust }}
+      RUN: ${{ needs.changes.outputs.rust == 'true' && (matrix.os != 'windows-2022' || needs.changes.outputs.windows == 'true') }}
     strategy:
       fail-fast: false
       matrix:
         os: [macos-15, windows-2022]
     steps:
+      - name: Cheap checks passed
+        shell: bash
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          LINT: ${{ needs.lint.result }}
+        run: |
+          if [ "$CHANGES" != success ] || [ "$LINT" != success ]; then
+            echo "changes=$CHANGES lint=$LINT"
+            exit 1
+          fi
       - if: env.RUN != 'true'
-        run: echo "No Rust change in this pull request."
+        run: echo "No Rust change for this lane in this pull request."
       - if: env.RUN == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -78,8 +138,6 @@ jobs:
           components: rustfmt, clippy
       - if: env.RUN == 'true'
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-      - if: env.RUN == 'true'
-        run: cargo fmt --all --check
       - if: env.RUN == 'true'
         run: cargo clippy --workspace --all-targets -- -D warnings
       - if: env.RUN == 'true'
@@ -101,11 +159,22 @@ jobs:
 
   web:
     name: Web
-    needs: changes
+    needs: [changes, lint]
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     env:
       RUN: ${{ needs.changes.outputs.web }}
     steps:
+      - name: Cheap checks passed
+        shell: bash
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          LINT: ${{ needs.lint.result }}
+        run: |
+          if [ "$CHANGES" != success ] || [ "$LINT" != success ]; then
+            echo "changes=$CHANGES lint=$LINT"
+            exit 1
+          fi
       - if: env.RUN != 'true'
         run: echo "No web change in this pull request."
       - if: env.RUN == 'true'
@@ -122,9 +191,6 @@ jobs:
         run: npm ci
         working-directory: web
       - if: env.RUN == 'true'
-        run: npm run check
-        working-directory: web
-      - if: env.RUN == 'true'
         run: npm test
         working-directory: web
       - if: env.RUN == 'true'
@@ -134,7 +200,8 @@ jobs:
   # The browser suite, split by file across eight runners.
   e2e-shard:
     name: E2E shard ${{ matrix.shard }}/8
-    needs: changes
+    needs: [changes, lint]
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     env:
       RUN: ${{ needs.changes.outputs.e2e }}
@@ -143,6 +210,16 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
+      - name: Cheap checks passed
+        shell: bash
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          LINT: ${{ needs.lint.result }}
+        run: |
+          if [ "$CHANGES" != success ] || [ "$LINT" != success ]; then
+            echo "changes=$CHANGES lint=$LINT"
+            exit 1
+          fi
       - if: env.RUN != 'true'
         run: echo "No change the browser suite covers."
       - if: env.RUN == 'true'
@@ -167,10 +244,9 @@ jobs:
       - if: env.RUN == 'true'
         run: npm run test:e2e:install
         working-directory: web
-      - name: System libraries for the headless shell
-        if: env.RUN == 'true'
-        run: sudo npx playwright install-deps chromium-headless-shell
-        working-directory: web
+      # No apt step: the runner image already carries Chrome's libraries, and
+      # `playwright install-deps` took from 10 seconds to over 8 minutes on the apt
+      # mirrors. If the headless shell ever lacks a library, it fails at launch.
       - if: env.RUN == 'true'
         run: npm run test:e2e -- --shard=${{ matrix.shard }}/8
         working-directory: web
@@ -185,24 +261,26 @@ jobs:
   # The required "E2E" check: green only when every shard passed or had nothing to do.
   e2e:
     name: E2E
-    needs: [changes, e2e-shard]
+    needs: [changes, lint, e2e-shard]
     if: always()
     runs-on: ubuntu-24.04
     steps:
       - shell: bash
         env:
           CHANGES: ${{ needs.changes.result }}
+          LINT: ${{ needs.lint.result }}
           SHARDS: ${{ needs.e2e-shard.result }}
         run: |
-          echo "changes=$CHANGES shards=$SHARDS"
-          [ "$CHANGES" = success ] && [ "$SHARDS" = success ]
+          echo "changes=$CHANGES lint=$LINT shards=$SHARDS"
+          [ "$CHANGES" = success ] && [ "$LINT" = success ] && [ "$SHARDS" = success ]
 
   desktop:
     name: Unsigned desktop build (${{ matrix.os }})
-    needs: changes
+    needs: [changes, lint]
+    if: ${{ !cancelled() }}
     runs-on: ${{ matrix.os }}
     env:
-      RUN: ${{ needs.changes.outputs.desktop }}
+      RUN: ${{ needs.changes.outputs.desktop == 'true' && (matrix.os != 'windows-2022' || needs.changes.outputs.windows == 'true') }}
     strategy:
       fail-fast: false
       matrix:
@@ -212,8 +290,18 @@ jobs:
           - os: windows-2022
             bundles: nsis
     steps:
+      - name: Cheap checks passed
+        shell: bash
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          LINT: ${{ needs.lint.result }}
+        run: |
+          if [ "$CHANGES" != success ] || [ "$LINT" != success ]; then
+            echo "changes=$CHANGES lint=$LINT"
+            exit 1
+          fi
       - if: env.RUN != 'true'
-        run: echo "No change the desktop build covers."
+        run: echo "No change the desktop build covers on this lane."
       - if: env.RUN == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -288,10 +376,10 @@ jobs:
             codex: codex.cmd
     env:
       CODEX_VERSION: 0.166.0
-      RUN: ${{ needs.changes.outputs.desktop }}
+      RUN: ${{ needs.changes.outputs.desktop == 'true' && (matrix.os != 'windows-2022' || needs.changes.outputs.windows == 'true') }}
     steps:
       - if: env.RUN != 'true'
-        run: echo "No desktop bundle was built for this pull request."
+        run: echo "No desktop bundle was built for this lane."
       - if: env.RUN == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
