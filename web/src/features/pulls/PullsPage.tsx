@@ -1,16 +1,19 @@
 import { ArrowUpDown, Check, CircleCheck, CircleDot, CircleX, Folder, GitMerge, GitPullRequest, ListFilter, RefreshCw, Search, X } from "lucide-react";
+import "./pulls.css";
 import { useMemo, useState } from "react";
 import type { PullListEntry } from "../../api/types";
 import { compactAge } from "../../lib/format";
 import { toFailure, useAsync } from "../../lib/useAsync";
+import { navigate, useRoute } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { useVisibleProjects } from "../../state/workspace";
 import { Button, IconButton } from "../../ui/controls";
 import { ConfirmDialog } from "../../ui/Dialog";
 import { Menu, type MenuItem } from "../../ui/Menu";
-import { ErrorState, Loading, NarrowBack } from "../../ui/states";
+import { PageBar } from "../../ui/PageBar";
+import { ErrorState, Loading } from "../../ui/states";
 import { PullDetail } from "./PullDetail";
-import { authorsOf, labelsOf, noFilters, parseSearch, visiblePulls, type PullFilters, type PullSort } from "./pullModel";
+import { authorsOf, checksOf, labelsOf, noFilters, parseSearch, visiblePulls, type PullFilters, type PullSort } from "./pullModel";
 import { pullsApi } from "../../api/pulls";
 
 const SORTS: { value: PullSort; label: string }[] = [
@@ -26,6 +29,14 @@ const STATES = [
   { value: "all", label: "All" },
 ];
 
+const CHECKS = { pass: "Passing", fail: "Failing", pending: "Running", none: "No checks" } as const;
+const REVIEWS: Record<string, string> = {
+  approved: "Approved",
+  changes_requested: "Changes requested",
+  review_required: "Review required",
+  none: "",
+};
+
 type Open = { kind: "sort" | "filters" | "project"; x: number; y: number };
 
 export function PullsPage() {
@@ -35,7 +46,10 @@ export function PullsPage() {
   const [sort, setSort] = useState<PullSort>("updated");
   const [filters, setFilters] = useState<PullFilters>(noFilters);
   const [menu, setMenu] = useState<Open | null>(null);
-  const [selected, setSelected] = useState<{ project: string; number: number } | null>(null);
+  const route = useRoute();
+  const selected = route.name === "pulls" && route.project !== undefined && route.number !== undefined ? { project: route.project, number: route.number } : null;
+  const setSelected = (next: { project: string; number: number } | null) =>
+    navigate(next ? { name: "pulls", project: next.project, number: next.number } : { name: "pulls" });
   const [nonce, setNonce] = useState(0);
   const [picked, setPicked] = useState<PullListEntry[]>([]);
   const [merging, setMerging] = useState<PullListEntry | null>(null);
@@ -125,158 +139,212 @@ export function PullsPage() {
             },
           ];
 
+  const all = list.data?.pulls ?? [];
+  const count = (test: (pull: PullListEntry["pull"]) => boolean) => all.filter(({ pull }) => test(pull)).length;
+  const quickFilters: { label: string; n: number; on: boolean; set(): void }[] = [
+    {
+      label: "Open",
+      n: count((pull) => pull.state === "open"),
+      on: state === "open" && filters.draft === "all",
+      set: () => {
+        setState("open");
+        setFilters({ ...filters, draft: "all" });
+      },
+    },
+    {
+      label: "Drafts",
+      n: count((pull) => pull.draft),
+      on: state === "open" && filters.draft === "only",
+      set: () => {
+        setState("open");
+        setFilters({ ...filters, draft: "only" });
+      },
+    },
+  ];
+
+  if (selected) {
+    return (
+      <div className="pulls-page">
+        <PullDetail
+          layout="page"
+          key={`${selected.project}:${selected.number}`}
+          projectId={selected.project}
+          number={selected.number}
+          onBack={() => {
+            setSelected(null);
+            refresh();
+          }}
+          onOpen={(number) => setSelected({ project: selected.project, number })}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="pulls-page">
-      <header className="topbar">
-        <NarrowBack />
-        <div className="crumbs">
-          <h1 tabIndex={-1} data-page-title>
-            Pull requests
-          </h1>
+      <PageBar>
+        <h1 tabIndex={-1} data-page-title>
+          Pull requests
+        </h1>
+      </PageBar>
+      <div className="pulls-bar">
+        <div className="pulls-pills" role="group" aria-label="Quick filters">
+          {quickFilters.map((entry) => (
+            <button key={entry.label} type="button" className="pulls-pill" aria-pressed={entry.on} onClick={entry.set}>
+              {entry.label} · {entry.n}
+            </button>
+          ))}
         </div>
-      </header>
-      <div className="pulls-columns">
-        <div className="pulls-list-column">
-          <div className="pulls-bar">
-            <label className="pulls-search">
-              <Search size={14} aria-hidden />
-              <input
-                aria-label="Search pull requests"
-                placeholder="Search pull requests, or label:bug"
-                value={text}
-                onChange={(event) => setText(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") setSubmitted(text);
-                }}
-              />
-              {text ? (
-                <button
-                  type="button"
-                  aria-label="Clear search"
-                  onClick={() => {
-                    setText("");
-                    setSubmitted("");
-                  }}
-                >
-                  <X size={12} aria-hidden />
-                </button>
-              ) : null}
-            </label>
-            {/* The chips wrap as one group, so a narrow column never strands one alone. */}
-            <div className="pulls-bar-actions">
-              <button type="button" className="pulls-chip" onClick={(event) => open("sort", event.currentTarget)}>
-                <ArrowUpDown size={14} aria-hidden />
-                Sort
-              </button>
-              <button type="button" className="pulls-chip" onClick={(event) => open("filters", event.currentTarget)}>
-                <ListFilter size={14} aria-hidden />
-                Filters
-              </button>
-              <button type="button" className="pulls-chip" onClick={(event) => open("project", event.currentTarget)}>
-                <Folder size={14} aria-hidden />
-                {filters.project ? nameOf(filters.project) : "All"}
-              </button>
-              <IconButton label="Refresh pull requests" onClick={refresh}>
-                <RefreshCw size={14} aria-hidden />
-              </IconButton>
-            </div>
-          </div>
-          {picked.length > 0 ? (
-            <div className="pulls-bulk" role="status">
-              <span>{picked.length} selected</span>
-              <Button small onClick={() => void closePicked()}>
-                Close selected
-              </Button>
-              <Button small tone="quiet" onClick={() => setPicked([])}>
-                Clear
-              </Button>
-            </div>
+        <label className="pulls-find">
+          <Search size={14} aria-hidden />
+          <input
+            aria-label="Search pull requests"
+            placeholder="Search, or label:bug"
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") setSubmitted(text);
+            }}
+          />
+          {text ? (
+            <button
+              type="button"
+              aria-label="Clear search"
+              onClick={() => {
+                setText("");
+                setSubmitted("");
+              }}
+            >
+              <X size={12} aria-hidden />
+            </button>
           ) : null}
-          {list.status === "loading" ? (
-            <Loading label="Loading pull requests" rows={5} />
-          ) : list.status === "error" ? (
-            <ErrorState title="Couldn't load pull requests" failure={list.error} onRetry={list.reload} />
-          ) : rows.length === 0 ? (
-            <div className="pulls-empty">
-              <GitPullRequest size={32} aria-hidden />
-              <h2>No pull requests</h2>
-              <p>Pull requests from every project in this workspace appear here.</p>
-              {list.data.failed.map((failure) => (
-                <p key={failure.project_id} className="muted">
-                  {nameOf(failure.project_id)}: {failure.message}
-                </p>
-              ))}
+        </label>
+        {/* The chips wrap as one group, so a narrow column never strands one alone. */}
+        <div className="pulls-bar-actions">
+          <button type="button" className="pulls-chip" onClick={(event) => open("sort", event.currentTarget)}>
+            <ArrowUpDown size={14} aria-hidden />
+            Sort
+          </button>
+          <button type="button" className="pulls-chip" onClick={(event) => open("filters", event.currentTarget)}>
+            <ListFilter size={14} aria-hidden />
+            Filters
+          </button>
+          <button type="button" className="pulls-chip" onClick={(event) => open("project", event.currentTarget)}>
+            <Folder size={14} aria-hidden />
+            {filters.project ? nameOf(filters.project) : "All"}
+          </button>
+          <IconButton label="Refresh pull requests" onClick={refresh}>
+            <RefreshCw size={14} aria-hidden />
+          </IconButton>
+        </div>
+      </div>
+      <div className="pulls-table">
+        {picked.length > 0 ? (
+          <div className="pulls-bulk" role="status">
+            <span>{picked.length} selected</span>
+            <Button small onClick={() => void closePicked()}>
+              Close selected
+            </Button>
+            <Button small tone="quiet" onClick={() => setPicked([])}>
+              Clear
+            </Button>
+          </div>
+        ) : null}
+        {list.status === "loading" ? (
+          <Loading label="Loading pull requests" rows={5} />
+        ) : list.status === "error" ? (
+          <ErrorState title="Couldn't load pull requests" failure={list.error} onRetry={list.reload} />
+        ) : rows.length === 0 ? (
+          <div className="pulls-empty">
+            <GitPullRequest size={32} aria-hidden />
+            <h2>No pull requests</h2>
+            <p>Pull requests from every project in this workspace appear here.</p>
+            {list.data.failed.map((failure) => (
+              <p key={failure.project_id} className="muted">
+                {nameOf(failure.project_id)}: {failure.message}
+              </p>
+            ))}
+          </div>
+        ) : (
+          <>
+            <div className="pulls-head" aria-hidden>
+              <span />
+              <span>Pull request</span>
+              <span>Checks</span>
+              <span>Review</span>
+              <span>Updated</span>
+              <span />
             </div>
-          ) : (
-            <ul className="pulls-list">
+            <ul className="pull-rows">
               {rows.map((entry) => {
                 const { project_id: project, pull } = entry;
                 const isPicked = picked.some((one) => one.project_id === project && one.pull.number === pull.number);
+                const checks = checksOf(pull.checks_state);
+                const review = pull.draft ? "Draft" : (REVIEWS[pull.review_state ?? "none"] ?? "");
                 return (
-                <li key={`${project}:${pull.number}`}>
-                  <input
-                    type="checkbox"
-                    className="pull-pick"
-                    aria-label={`Select #${pull.number}`}
-                    checked={isPicked}
-                    onChange={() =>
-                      setPicked(isPicked ? picked.filter((one) => !(one.project_id === project && one.pull.number === pull.number)) : [...picked, entry])
-                    }
-                  />
-                  <button
-                    type="button"
-                    aria-current={selected?.project === project && selected.number === pull.number ? "true" : undefined}
-                    onClick={() => setSelected({ project, number: pull.number })}
+                  <li
+                    key={`${project}:${pull.number}`}
+                    onClick={(event) => {
+                      if (!(event.target as HTMLElement).closest("button, input, a")) setSelected({ project, number: pull.number });
+                    }}
                   >
-                    <GitPullRequest size={14} aria-hidden />
-                    <span className="pull-row-title">{pull.title}</span>
-                    {pull.checks_state === "passing" ? <Check size={12} className="tone-success" aria-label="Checks passing" /> : null}
-                    {pull.checks_state === "failing" ? <X size={12} className="tone-danger" aria-label="Checks failing" /> : null}
-                    <small>
-                      {nameOf(project)} #{pull.number}
-                      {pull.author ? ` · ${pull.author}` : ""}
-                      {pull.updated_at ? ` · ${compactAge(pull.updated_at)}` : ""}
-                    </small>
-                  </button>
-                  <span className="pull-quick">
-                    {pull.state === "closed" ? (
-                      <IconButton label={`Reopen #${pull.number}`} onClick={() => quick(pullsApi.action(project, pull.number, "reopen"), "Reopened")}>
-                        <CircleDot size={14} aria-hidden />
-                      </IconButton>
-                    ) : null}
-                    {pull.state === "open" && pull.draft ? (
-                      <IconButton label={`Ready for review #${pull.number}`} onClick={() => quick(pullsApi.update(project, pull.number, { draft: false }), "Ready for review")}>
-                        <CircleCheck size={14} aria-hidden />
-                      </IconButton>
-                    ) : null}
-                    {pull.state === "open" ? (
-                      <>
-                        <IconButton label={`Merge #${pull.number}`} onClick={() => setMerging(entry)}>
-                          <GitMerge size={14} aria-hidden />
+                    <input
+                      type="checkbox"
+                      className="pull-row-pick"
+                      aria-label={`Select #${pull.number}`}
+                      checked={isPicked}
+                      onChange={() =>
+                        setPicked(isPicked ? picked.filter((one) => !(one.project_id === project && one.pull.number === pull.number)) : [...picked, entry])
+                      }
+                    />
+                    <button type="button" className="pull-open" onClick={() => setSelected({ project, number: pull.number })}>
+                      <span className="pull-row-name" data-draft={pull.draft || undefined}>
+                        {pull.draft ? "Draft · " : ""}
+                        {pull.title}
+                      </span>
+                      <small>{[`#${pull.number}`, pull.head, nameOf(project), pull.author].filter(Boolean).join(" · ")}</small>
+                    </button>
+                    <span className="pull-checks-cell" data-tone={checks}>
+                      {checks === "pass" ? <Check size={12} aria-hidden /> : null}
+                      {checks === "fail" ? <X size={12} aria-hidden /> : null}
+                      {checks === "pending" ? <span className="pull-spin spin" aria-hidden /> : null}
+                      <span className="pull-checks-word">
+                        <span className="sr-only">Checks </span>
+                        {CHECKS[checks]}
+                      </span>
+                    </span>
+                    <span className="pull-review-cell" data-tone={pull.review_state === "changes_requested" && !pull.draft ? "warn" : undefined}>
+                      {review}
+                    </span>
+                    <span className="pull-age">{pull.updated_at ? compactAge(pull.updated_at) : ""}</span>
+                    <span className="pull-row-actions">
+                      {pull.state === "closed" ? (
+                        <IconButton label={`Reopen #${pull.number}`} onClick={() => quick(pullsApi.action(project, pull.number, "reopen"), "Reopened")}>
+                          <CircleDot size={14} aria-hidden />
                         </IconButton>
-                        <IconButton label={`Close #${pull.number}`} onClick={() => quick(pullsApi.action(project, pull.number, "close"), "Closed")}>
-                          <CircleX size={14} aria-hidden />
+                      ) : null}
+                      {pull.state === "open" && pull.draft ? (
+                        <IconButton label={`Ready for review #${pull.number}`} onClick={() => quick(pullsApi.update(project, pull.number, { draft: false }), "Ready for review")}>
+                          <CircleCheck size={14} aria-hidden />
                         </IconButton>
-                      </>
-                    ) : null}
-                  </span>
-                </li>
+                      ) : null}
+                      {pull.state === "open" ? (
+                        <>
+                          <IconButton label={`Merge #${pull.number}`} onClick={() => setMerging(entry)}>
+                            <GitMerge size={14} aria-hidden />
+                          </IconButton>
+                          <IconButton label={`Close #${pull.number}`} onClick={() => quick(pullsApi.action(project, pull.number, "close"), "Closed")}>
+                            <CircleX size={14} aria-hidden />
+                          </IconButton>
+                        </>
+                      ) : null}
+                    </span>
+                  </li>
                 );
               })}
             </ul>
-          )}
-        </div>
-        {selected ? (
-          <div className="pulls-detail-column">
-            <PullDetail
-              key={`${selected.project}:${selected.number}`}
-              projectId={selected.project}
-              number={selected.number}
-              onClose={() => setSelected(null)}
-              onOpen={(number) => setSelected({ project: selected.project, number })}
-            />
-          </div>
-        ) : null}
+          </>
+        )}
       </div>
       {menu ? <Menu x={menu.x} y={menu.y} label="Pull request options" items={items} onClose={() => setMenu(null)} /> : null}
       {merging ? (

@@ -1,0 +1,89 @@
+/* Scheduled tasks: a table of what runs when, as a page and as a section of Settings. */
+.tasks-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+.tasks-page .tasks-body {
+  padding: 6px 28px 24px;
+}
+.task-table {
+  --task-cols: minmax(0, 1fr) minmax(0, 190px) minmax(0, 170px) 40px 150px;
+  display: flex;
+  flex-direction: column;
+}
+.task-row {
+  display: grid;
+  grid-template-columns: var(--task-cols);
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 6px 4px;
+  border-top: 1px solid var(--color-divider);
+  font-size: var(--text-body);
+}
+.task-row:last-child {
+  border-bottom: 1px solid var(--color-divider);
+}
+.task-head {
+  min-height: 26px;
+  padding-block: 0;
+  border-top: 0;
+  color: var(--color-faint);
+  font-size: var(--text-label);
+}
+.task-name,
+.task-when {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.task-name b {
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.task-row[data-paused] .task-name b {
+  color: var(--color-muted);
+}
+.task-name small,
+.task-when small {
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.task-last {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+}
+.task-last[data-tone="fail"] {
+  color: var(--color-danger);
+}
+.task-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+}
+.task-dialog {
+  width: min(500px, calc(100vw - 32px));
+}
+@media (max-width: 767px) {
+  .tasks-page .tasks-body {
+    padding-inline: 16px;
+  }
+  .task-table {
+    --task-cols: minmax(0, 1fr) 40px 150px;
+  }
+  .task-row > :nth-child(2),
+  .task-row > :nth-child(3) {
+    display: none;
+  }
+}

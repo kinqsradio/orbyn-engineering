@@ -243,17 +243,18 @@ test("the draft docks its composer at the bottom with the heading above it", asy
   }
 });
 
-test("usage opens from the sidebar and closes back to the thread", async ({ page }) => {
+test("usage opens from the sidebar as a page", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/#/threads/t-done");
   await page.getByRole("link", { name: "Usage" }).click();
-  const usage = page.getByRole("dialog", { name: "Usage" });
+  const usage = page.getByRole("region", { name: "Usage" });
   await expect(usage.getByRole("heading", { name: "Daily processed tokens" })).toBeVisible();
-  await usage.getByRole("radio", { name: "Limits" }).click();
+  await usage.getByRole("tab", { name: "Usage" }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(usage.getByRole("tab", { name: "Limits" })).toHaveAttribute("aria-selected", "true");
   await expect(usage.getByText("No engine reports limits.")).toBeVisible();
   await page.keyboard.press("t");
-  await usage.getByRole("button", { name: "Close usage" }).click();
-  await expect(page).toHaveURL(/threads\/t-done/);
+  await expect(page).toHaveURL(/#\/usage/);
 });
 
 test("the draft keeps its text and files through a project switch and adding a folder", async ({ page }) => {

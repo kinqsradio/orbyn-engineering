@@ -384,6 +384,33 @@ export function createMockApi(options: MockOptions = {}) {
       return err(401, "unauthorized", "Sign in with the access key.");
     }
 
+    if (method === "GET" && seg[1] === "projects" && seg[3] === "pulls" && seg[4]) {
+      const pull = fixtures.pulls().find((entry) => String(entry.pull.number) === seg[4])?.pull;
+      if (!pull) return err(404, "not_found", "Pull request not found.");
+      if (!seg[5]) {
+        return {
+          status: 200,
+          body: {
+            pull,
+            body: "Adds a timeout to approvals, so a forgotten request no longer holds a run open.",
+            checks: [],
+            comments: [],
+            mergeable: "mergeable",
+            reviewers: ["sam"],
+            head_sha: "abc1234",
+            base_sha: "def5678",
+            additions: 48,
+            deletions: 12,
+            changed_files: 3,
+            maintainer_can_modify: null,
+            auto_merge: false,
+          },
+        };
+      }
+      if (seg[5] === "checks" || seg[5] === "timeline") return { status: 200, body: [] };
+      if (seg[5] === "stack") return { status: 200, body: { layers: [], position: 0 } };
+    }
+
     switch (key) {
       case "GET /api/source-control":
         if (seg[2] === "repository-star") return { status: 200, body: { starred: true } };

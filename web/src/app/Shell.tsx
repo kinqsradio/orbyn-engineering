@@ -22,6 +22,7 @@ import { CloneJobs } from "../features/workspace/CloneJobs";
 import { Sidebar } from "../features/workspace/Sidebar";
 import { useDrawnOrder } from "../features/workspace/drawnOrder";
 import { PullsPage } from "../features/pulls/PullsPage";
+import { ScheduledTasksPage } from "../features/settings/ScheduledTasks";
 import { UsagePage } from "../features/usage/UsagePage";
 import { PreviewFloat } from "../features/panels/PreviewFloat";
 import { Toasts } from "../ui/Toasts";
@@ -56,7 +57,7 @@ const loadEngines = () =>
     loadingEngines = null;
   }));
 
-type PageRoute = Exclude<Route, { name: "settings" | "usage" }>;
+type PageRoute = Exclude<Route, { name: "settings" }>;
 
 function RouteView({ route, needsProject }: { route: PageRoute; needsProject: boolean }) {
   switch (route.name) {
@@ -69,6 +70,10 @@ function RouteView({ route, needsProject }: { route: PageRoute; needsProject: bo
       );
     case "pulls":
       return <PullsPage />;
+    case "usage":
+      return <UsagePage />;
+    case "tasks":
+      return <ScheduledTasksPage />;
     case "thread":
       return <ThreadView key={route.id} id={route.id} />;
     case "new":
@@ -590,7 +595,7 @@ export function Shell() {
   }, []);
 
   const needsProject = projects !== null && projects.length === 0;
-  const overlay = route.name === "settings" || route.name === "usage";
+  const overlay = route.name === "settings";
   const underneath = overlay ? behindSettings.current : route;
   if (!overlay) behindSettings.current = route;
   const onHome = underneath.name === "home" && !needsProject;
@@ -639,7 +644,6 @@ export function Shell() {
           </div>
         </main>
       )}
-      {route.name === "usage" ? <UsagePage onClose={() => navigate(underneath)} /> : null}
     </div>
   );
 }

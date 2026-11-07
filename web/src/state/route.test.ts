@@ -4,6 +4,9 @@ import { navigate, parseRoute, routeHref, type Route } from "./route";
 describe("routes", () => {
   it.each<Route>([
     { name: "home" },
+    { name: "tasks" },
+    { name: "pulls" },
+    { name: "pulls", project: "p/1 x", number: 42 },
     { name: "thread", id: "t/1 x" },
     { name: "new", projectId: null },
     { name: "new", projectId: "p1" },
@@ -17,6 +20,11 @@ describe("routes", () => {
     { name: "settings", section: "tasks", task: "task/1 x" },
   ])("round-trips %j", (route) => {
     expect(parseRoute(routeHref(route))).toEqual(route);
+  });
+
+  it("falls back to the list for a pull request link without a number", () => {
+    expect(parseRoute("#/pulls/p1")).toEqual({ name: "pulls" });
+    expect(parseRoute("#/pulls/p1/abc")).toEqual({ name: "pulls" });
   });
 
   it("preserves explicit malformed IDs and selection across settings navigation", () => {

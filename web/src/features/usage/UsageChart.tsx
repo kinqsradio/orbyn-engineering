@@ -53,14 +53,9 @@ export function UsageChart({
   const top = ticks.at(-1) ?? 1;
   const plotW = Math.max(1, width - PAD.left - PAD.right);
   const plotH = HEIGHT - PAD.top - PAD.bottom;
-  const x = (at: number) => PAD.left + (dates.length > 1 ? (at / (dates.length - 1)) * plotW : plotW / 2);
+  const slot = plotW / Math.max(1, dates.length);
+  const x = (at: number) => PAD.left + (at + 0.5) * slot;
   const y = (value: number) => PAD.top + plotH - (value / (top || 1)) * plotH;
-  const line = (level: number) => stacks.map((stack, at) => `${x(at)},${y(stack[level] ?? 0)}`).join(" L ");
-  const base = (level: number) =>
-    stacks
-      .map((stack, at) => `${x(at)},${y(level > 0 ? (stack[level - 1] ?? 0) : 0)}`)
-      .reverse()
-      .join(" L ");
   const labelAt = dates.length > 1 ? [0, Math.floor((dates.length - 1) / 2), dates.length - 1] : [0];
   const hovered = hover === null ? null : dates[hover];
 
@@ -71,7 +66,7 @@ export function UsageChart({
       onPointerMove={(event) => {
         const rect = event.currentTarget.getBoundingClientRect();
         const ratio = (event.clientX - rect.left - PAD.left) / plotW;
-        setHover(Math.min(dates.length - 1, Math.max(0, Math.round(ratio * (dates.length - 1)))));
+        setHover(Math.min(dates.length - 1, Math.max(0, Math.floor(ratio * dates.length))));
       }}
       onPointerLeave={() => setHover(null)}
     >
@@ -84,14 +79,26 @@ export function UsageChart({
             </text>
           </g>
         ))}
-        {dates.length > 1
-          ? engines.map((engine, level) => (
-              <g key={engine.engine}>
-                <path d={`M ${line(level)} L ${base(level)} Z`} fill={colorOf(engine.engine)} opacity={0.14} />
-                <path d={`M ${line(level)}`} fill="none" stroke={colorOf(engine.engine)} strokeWidth={1.5} />
-              </g>
-            ))
-          : null}
+        {dates.map((date, at) =>
+          engines.map((engine, level) => {
+            const low = level > 0 ? (stacks[at]?.[level - 1] ?? 0) : 0;
+            const high = stacks[at]?.[level] ?? 0;
+            if (high <= low) return null;
+            return (
+              <rect
+                key={`${date}:${engine.engine}`}
+                className="usage-bar"
+                x={x(at) - Math.max(1, slot * 0.35)}
+                width={Math.max(2, slot * 0.7)}
+                y={y(high)}
+                height={y(low) - y(high)}
+                rx={2}
+                fill={colorOf(engine.engine)}
+                opacity={hover === null || hover === at ? 0.85 : 0.4}
+              />
+            );
+          }),
+        )}
         {labelAt.map((at) => (
           <text
             key={at}
@@ -103,9 +110,6 @@ export function UsageChart({
             {shortDate(dates[at] ?? "")}
           </text>
         ))}
-        {hover !== null ? (
-          <line className="usage-cursor" x1={x(hover)} x2={x(hover)} y1={PAD.top} y2={HEIGHT - PAD.bottom} />
-        ) : null}
       </svg>
       {hovered ? (
         <div
