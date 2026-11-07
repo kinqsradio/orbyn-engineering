@@ -93,8 +93,9 @@
 .task-last[data-tone="fail"] { padding: 0 9px; height: 22px; border-radius: var(--radius-pill); background: var(--color-dangerSoft); }
 
 /* Runs and Webhook deliveries: a segmented switch, then a table (s-x-task-history). */
-.set-tabs {
-  display: inline-flex;
+.set-tabs.set-tabs {
+  display: flex;
+  width: max-content;
   gap: 2px;
   margin: 8px 0 10px;
   padding: 2px;

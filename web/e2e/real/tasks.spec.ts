@@ -60,7 +60,8 @@ test("a webhook task filters, verifies, drops repeats and logs each delivery", a
   await page.getByRole("button", { name: "Open On pushes" }).click();
   await page.getByRole("tab", { name: "Webhook deliveries" }).click();
   const rows = page.getByRole("table", { name: "Deliveries" }).getByRole("row");
-  await expect(rows).toHaveCount(4);
+  // The header row and the four calls.
+  await expect(rows).toHaveCount(5);
   for (const state of ["202 Accepted", "200 Filtered out", "200 Duplicate", "200 Bad signature"]) {
     await expect(page.getByRole("table", { name: "Deliveries" }).getByText(state, { exact: true })).toBeVisible();
   }

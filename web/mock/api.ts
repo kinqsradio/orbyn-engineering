@@ -525,7 +525,11 @@ export function createMockApi(options: MockOptions = {}) {
               for (const id of edit.project_ids) delete preferenceOverrides[id]?.[row.key];
             } else for (const id of targets) {
               const values = id === null ? preferenceValues : (preferenceOverrides[id] ??= {});
-              if (edit.op === "set") values[row.key] = edit.value;
+              // The service merges a retention rule into the stored object; it replaces nothing else.
+              if (edit.op === "set" && row.key === "storage_cleanup" && typeof edit.value === "object" && edit.value !== null && !Array.isArray(edit.value)) {
+                const kept = values[row.key];
+                values[row.key] = { ...(kept !== null && typeof kept === "object" && !Array.isArray(kept) ? kept : {}), ...edit.value };
+              } else if (edit.op === "set") values[row.key] = edit.value;
               else delete values[row.key];
             }
           }

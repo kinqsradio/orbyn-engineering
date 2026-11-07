@@ -70,7 +70,6 @@ export const SETTINGS: readonly SettingSearchItem[] = [
   {"id": "labs-multiline-rows", "title": "Multiline rows", "section": "labs"},
   {"id": "labs-plan-mode", "title": "Plan mode", "section": "labs"},
   {"id": "labs-context-window-indicator", "title": "Context window indicator", "section": "labs"},
-  {"id": "appearance-theme-file", "title": "Theme file", "section": "appearance"},
   {"id": "tasks-skip-near-limit", "title": "Skip a run when a limit is near", "section": "tasks"},
   {"id": "tasks-notify-runs", "title": "Notify when a run finishes or fails", "section": "tasks"},
   {"id": "appearance-interface-size", "title": "Interface size", "section": "appearance"},
