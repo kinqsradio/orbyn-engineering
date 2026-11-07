@@ -176,9 +176,9 @@ function TelemetryForm({ query, disabled }: { query: ProjectScopesQuery; disable
 
 const RETENTION = [
   { key: "browser_artifacts_after_days", title: settingsLabel("maintenance-browser-artifacts-days"),
-    description: "Delete saved browser captures after this many days. Older capture links will no longer open." },
+    description: "Screenshots and downloads the Browser panel saved" },
   { key: "logs_after_days", title: settingsLabel("maintenance-logs-days"),
-    description: "Delete inactive rotated log files after this many days. Current logs are kept." },
+    description: "Log files that are no longer written to" },
 ] as const;
 type RetentionKey = typeof RETENTION[number]["key"];
 
@@ -287,7 +287,7 @@ function EnvironmentCleanup({ query, disabled }: { query: ProjectScopesQuery; di
   const hasDraft = RETENTION.some(({ key }) => draft[key] !== undefined && draft[key] !== String(saved(key)));
   const shown = report ?? last.data ?? null;
   return <>
-    <SettingGroup title="Artifacts and logs">
+    <SettingGroup title="Retention">
       {RETENTION.map((rule) => <SettingRow key={rule.key} title={rule.title} description={rule.description}>
         {saved(rule.key) !== null || draft[rule.key] !== undefined ? <>
           <input aria-label={`${rule.title} in days`} type="number" min="1" max="3650" step="1" disabled={busy}
@@ -308,9 +308,9 @@ function EnvironmentCleanup({ query, disabled }: { query: ProjectScopesQuery; di
           onChange={(event) => { void save(rule.key, event.target.checked ? 8 : null); }} />
       </SettingRow>)}
     </SettingGroup>
-    <SettingGroup title="Cleanup">
+    <SettingGroup>
       <SettingRow title={settingsLabel("maintenance-run-the-rules")} description={!hasRules ? "Turn on a cleanup rule to use this." : shown ? undefined : "Cleanup hasn't run yet."}>
-        <Button small disabled={busy || !hasRules || hasDraft} onClick={() => void run()}>{deleting ? "Deleting…" : "Delete now"}</Button>
+        <Button small tone="danger" disabled={busy || !hasRules || hasDraft} onClick={() => void run()}>{deleting ? "Deleting…" : "Delete now"}</Button>
       </SettingRow>
       {shown ? <Collapsible summary="Last run">
         <p className="setting-line-desc">{reportLine(shown)}</p>
