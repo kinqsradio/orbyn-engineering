@@ -180,6 +180,12 @@ export async function attachmentBlob(id: string, signal?: AbortSignal): Promise<
 const q = encodeURIComponent;
 
 export const api = {
+  /** A task's last 50 firings, newest first. */
+  taskRuns: (taskId: string, signal?: AbortSignal) =>
+    request<import("../generated/TaskRun").TaskRun[]>("GET", `/api/tasks/${q(taskId)}/runs`, undefined, signal),
+  /** Whether the webhook takes requests and its address up to the token, which is never returned. */
+  taskWebhook: (taskId: string, signal?: AbortSignal) =>
+    request<import("../generated/WebhookAddress").WebhookAddress>("GET", `/api/tasks/${q(taskId)}/webhook`, undefined, signal),
   repositoryStar: (signal?: AbortSignal) => request<import("../generated/RepositoryStarStatus").RepositoryStarStatus>("GET", "/api/source-control/repository-star", undefined, signal),
   /** An MCP App's tool call, after the person confirmed it in the host's dialog. */
   mcpAppToolCall: (threadId: string, renderId: string, name: string, args: Record<string, unknown>) =>

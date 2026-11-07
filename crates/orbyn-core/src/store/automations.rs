@@ -1,6 +1,6 @@
 //! Scheduled tasks and the webhook delivery log.
 
-use orbyn_contracts::{Run, ScheduledTask, WebhookDelivery};
+use orbyn_contracts::{Run, ScheduledTask, TaskRun, WebhookDelivery};
 use rusqlite::{OptionalExtension, params};
 
 use super::{Store, run_row};
@@ -8,6 +8,8 @@ use crate::error::{CoreError, Result};
 
 /// A task's delivery log keeps this many rows.
 const MAX_DELIVERIES: i64 = 200;
+/// A task's run history keeps this many rows.
+const MAX_TASK_RUNS: i64 = 50;
 
 impl Store {
     /// Saves a task. A `None` secret leaves the stored one alone.
@@ -147,6 +149,95 @@ impl Store {
         rows.map(|text| Ok(serde_json::from_str(&text?)?)).collect()
     }
 
+    /// Notes one firing. `status` is `started`, `refused` or `skipped`.
+    pub fn record_task_run(
+        &self,
+        task_id: &str,
+        source: &str,
+        thread_id: Option<&str>,
+        status: &str,
+        error: Option<&str>,
+    ) -> Result<()> {
+        self.commit(|tx, _| {
+            tx.execute(
+                "INSERT INTO task_runs (id, task_id, source, started_at, started_unix,
+                    thread_id, status, error)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    crate::util::new_id(),
+                    task_id,
+                    source,
+                    crate::util::now(),
+                    crate::util::unix_now(),
+                    thread_id,
+                    status,
+                    error
+                ],
+            )?;
+            tx.execute(
+                "DELETE FROM task_runs WHERE task_id = ?1 AND id NOT IN
+                    (SELECT id FROM task_runs WHERE task_id = ?1
+                     ORDER BY started_unix DESC, rowid DESC LIMIT ?2)",
+                params![task_id, MAX_TASK_RUNS],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// The task's history, newest first. How a started firing ended is read from the
+    /// first run its thread began since, so it is as current as the thread.
+    pub fn task_runs(&self, task_id: &str) -> Result<Vec<TaskRun>> {
+        let conn = self.reader();
+        let mut statement = conn.prepare(
+            "SELECT id, source, started_at, thread_id, status, error FROM task_runs
+             WHERE task_id = ?1 ORDER BY started_unix DESC, rowid DESC",
+        )?;
+        let rows = statement
+            .query_map([task_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        rows.into_iter()
+            .map(|(id, source, started_at, thread_id, status, error)| {
+                let (outcome, ended_at) = match (status.as_str(), thread_id.as_deref()) {
+                    ("started", Some(thread)) => {
+                        let run: Option<(String, Option<String>)> = conn
+                            .query_row(
+                                "SELECT state, ended_at FROM runs
+                                 WHERE thread_id = ?1 AND started_at >= ?2
+                                 ORDER BY started_at, id LIMIT 1",
+                                params![thread, started_at],
+                                |row| Ok((row.get(0)?, row.get(1)?)),
+                            )
+                            .optional()?;
+                        match run {
+                            None => ("queued".to_owned(), None),
+                            Some((state, ended)) => (run_outcome(&state), ended),
+                        }
+                    }
+                    (other, _) => (other.to_owned(), None),
+                };
+                Ok(TaskRun {
+                    id,
+                    task_id: task_id.to_owned(),
+                    source,
+                    started_at,
+                    ended_at,
+                    outcome,
+                    thread_id,
+                    error,
+                })
+            })
+            .collect()
+    }
+
     /// Delegated threads of `parent`.
     pub fn child_threads(&self, parent: &str) -> Result<Vec<String>> {
         let conn = self.reader();
@@ -155,5 +246,13 @@ impl Store {
         )?;
         let rows = statement.query_map([parent], |row| row.get(0))?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+}
+
+/// A run's stored state as a history outcome: every live state reads as `running`.
+fn run_outcome(state: &str) -> String {
+    match state {
+        "completed" | "failed" | "cancelled" | "interrupted" => state.to_owned(),
+        _ => "running".to_owned(),
     }
 }

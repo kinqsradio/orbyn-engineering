@@ -368,8 +368,9 @@ pub struct Thread {
     #[serde(default)]
     pub scratch: bool,
     /// The project was removed from Orbyn. The thread stays, archived, and cannot be
-    /// unarchived until the folder is added back.
-    #[serde(default)]
+    /// unarchived until the folder is added back. Absent unless true.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(as = "Option<bool>", optional)]
     pub project_removed: bool,
     /// The removed project's name, kept so the archive can still say where it was.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2581,6 +2582,41 @@ pub struct WebhookDelivery {
     pub body: String,
     pub prompt: Option<String>,
     pub thread_id: Option<String>,
+    /// Who sent it, from the request's headers: a known service such as `GitHub`, or
+    /// the sender's `User-Agent`. Absent when the request names none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub from: Option<String>,
+}
+}
+
+wire! {
+/// Where a task's webhook listens. The token is kept only as a digest, so it cannot
+/// be shown again; `rotate` issues a new one.
+pub struct WebhookAddress {
+    /// A token has been issued, so the address accepts requests.
+    pub configured: bool,
+    /// The address up to the token: `/hooks/{task id}/`.
+    pub path_prefix: String,
+}
+}
+
+wire! {
+/// One firing of a task, newest first. The service keeps the last 50 per task.
+pub struct TaskRun {
+    pub id: String,
+    pub task_id: String,
+    /// `schedule`, `manual`, `webhook` or `after_thread`.
+    pub source: String,
+    pub started_at: String,
+    /// When the run ended; absent while it is queued or running, and when it never began.
+    pub ended_at: Option<String>,
+    /// `queued`, `running`, `completed`, `failed`, `cancelled`, `interrupted`,
+    /// `refused` (it could not start, see `error`) or `skipped` (near a usage limit).
+    pub outcome: String,
+    /// The thread the run works in, to open from the history.
+    pub thread_id: Option<String>,
+    pub error: Option<String>,
 }
 }
 

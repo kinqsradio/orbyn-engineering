@@ -28,7 +28,24 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (24, PULL_GUIDES),
     (25, RUN_ENGINE_TURNS),
     (26, PROJECT_REMOVAL_KEEPS_THREADS),
+    (27, TASK_RUNS),
 ];
+
+// One row per firing of a task, kept to the last 50. How the run ended is read from
+// the thread's runs when listed, so nothing here goes stale.
+const TASK_RUNS: &str = r#"
+CREATE TABLE task_runs (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL REFERENCES scheduled_tasks(id) ON DELETE CASCADE,
+    source TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    started_unix INTEGER NOT NULL,
+    thread_id TEXT,
+    status TEXT NOT NULL,
+    error TEXT
+);
+CREATE INDEX task_runs_by_task ON task_runs(task_id, started_unix);
+"#;
 
 // Removing a project keeps its threads, archived. The project row stays as a hidden
 // tombstone so the restrictive thread FK holds, and each thread keeps the name its

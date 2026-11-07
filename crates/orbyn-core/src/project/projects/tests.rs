@@ -439,3 +439,154 @@ async fn adding_the_folder_back_restores_the_threads_and_unarchive_works() {
     let live = core.update_thread(&thread.id, &patch, "t").unwrap();
     assert!(live.lifecycle.unwrap().archived_at.is_none());
 }
+
+fn interval_task(project: &str) -> orbyn_contracts::UpsertTask {
+    orbyn_contracts::UpsertTask {
+        id: None,
+        project_id: project.to_owned(),
+        thread_id: None,
+        name: "Tick".into(),
+        prompt: "hi".into(),
+        engine: "claude".into(),
+        schedule: orbyn_contracts::TaskSchedule {
+            kind: "interval".into(),
+            every_minutes: Some(5),
+            time: None,
+            weekdays: Vec::new(),
+            utc_offset_minutes: 0,
+            after_thread: None,
+            only_on_success: false,
+        },
+        signature: None,
+        secret: None,
+        filters: Vec::new(),
+        dedupe: None,
+        max_age_seconds: None,
+        timestamp_path: None,
+    }
+}
+
+#[tokio::test]
+async fn a_refused_firing_is_in_the_history_with_its_reason() {
+    let dir = TempDir::new();
+    let core = core(&dir).await;
+    let project = core.new_project("app", false, None).await.unwrap();
+    let task = core.save_task(interval_task(&project.id), "user").unwrap();
+
+    assert!(core.run_task(&task.id).await.is_err());
+
+    let history = core.task_runs(&task.id).unwrap();
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0].outcome, "refused");
+    assert_eq!(history[0].source, "manual");
+    assert!(history[0].error.is_some() && history[0].thread_id.is_none());
+}
+
+#[tokio::test]
+async fn the_history_keeps_the_last_fifty_firings_newest_first() {
+    let dir = TempDir::new();
+    let core = core(&dir).await;
+    let project = core.new_project("app", false, None).await.unwrap();
+    let task = core.save_task(interval_task(&project.id), "user").unwrap();
+    for n in 0..55 {
+        core.store
+            .record_task_run(&task.id, "schedule", None, "refused", Some(&n.to_string()))
+            .unwrap();
+    }
+
+    let history = core.task_runs(&task.id).unwrap();
+    assert_eq!(history.len(), 50);
+    assert_eq!(history[0].error.as_deref(), Some("54"));
+    assert_eq!(history[49].error.as_deref(), Some("5"));
+}
+
+#[tokio::test]
+async fn a_started_firing_reports_how_its_threads_run_ended() {
+    let dir = TempDir::new();
+    let core = core(&dir).await;
+    let project = core.new_project("app", false, None).await.unwrap();
+    let task = core.save_task(interval_task(&project.id), "user").unwrap();
+    let thread = thread_in(&core, &project).await;
+    core.store
+        .record_task_run(&task.id, "manual", Some(&thread.id), "started", None)
+        .unwrap();
+    assert_eq!(core.task_runs(&task.id).unwrap()[0].outcome, "queued");
+
+    let run = core
+        .store
+        .admit_run(crate::store::Admission {
+            thread_id: &thread.id,
+            prompt: "go",
+            actor: "t",
+        })
+        .unwrap();
+    assert_eq!(core.task_runs(&task.id).unwrap()[0].outcome, "running");
+    core.store
+        .finish_run(&run.id, orbyn_contracts::RunState::Completed, None)
+        .unwrap();
+
+    let ended = &core.task_runs(&task.id).unwrap()[0];
+    assert_eq!(ended.outcome, "completed");
+    assert!(ended.ended_at.is_some());
+}
+
+fn nearly_used(engine: &str) -> orbyn_contracts::EngineLimits {
+    orbyn_contracts::EngineLimits {
+        engine: engine.to_owned(),
+        checked_at: crate::util::now(),
+        limits: serde_json::Value::Null,
+        windows: vec![orbyn_contracts::LimitWindow {
+            id: "primary".into(),
+            label: "5 hours".into(),
+            used_percent: 95.0,
+            window_minutes: Some(300),
+            resets_at: None,
+        }],
+        plan: None,
+    }
+}
+
+async fn due(core: &Core, task: &orbyn_contracts::ScheduledTask) {
+    core.store
+        .save_task(task, Some(crate::util::unix_now() - 1), None)
+        .unwrap();
+    core.run_due_tasks().await;
+}
+
+#[tokio::test]
+async fn a_due_task_waits_when_its_engine_is_near_a_limit_and_the_preference_is_on() {
+    let dir = TempDir::new();
+    let core = core(&dir).await;
+    let project = core.new_project("app", false, None).await.unwrap();
+    let task = core.save_task(interval_task(&project.id), "user").unwrap();
+    core.usage.keep_limits(&nearly_used("claude"));
+    core.set_preferences(
+        None,
+        &BTreeMap::from([("task_skip_near_limit".into(), true.into())]),
+    )
+    .unwrap();
+
+    due(&core, &task).await;
+
+    let after = core.store.task(&task.id).unwrap();
+    assert!(
+        after.last_status.starts_with("skipped"),
+        "{}",
+        after.last_status
+    );
+    assert!(after.last_run_at.is_none());
+    assert_eq!(core.task_runs(&task.id).unwrap()[0].outcome, "skipped");
+}
+
+#[tokio::test]
+async fn a_due_task_fires_near_a_limit_when_the_preference_is_off() {
+    let dir = TempDir::new();
+    let core = core(&dir).await;
+    let project = core.new_project("app", false, None).await.unwrap();
+    let task = core.save_task(interval_task(&project.id), "user").unwrap();
+    core.usage.keep_limits(&nearly_used("claude"));
+
+    due(&core, &task).await;
+
+    assert_eq!(core.task_runs(&task.id).unwrap()[0].outcome, "refused");
+}

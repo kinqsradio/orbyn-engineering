@@ -534,7 +534,11 @@ fn router(state: AppState) -> Router {
         )
         .route("/api/tasks/{id}/enabled", post(api::set_task_enabled))
         .route("/api/tasks/{id}/run", post(api::run_task))
-        .route("/api/tasks/{id}/webhook", post(api::rotate_webhook))
+        .route(
+            "/api/tasks/{id}/webhook",
+            get(api::task_webhook).post(api::rotate_webhook),
+        )
+        .route("/api/tasks/{id}/runs", get(api::task_runs))
         .route("/api/tasks/{id}/deliveries", get(api::task_deliveries))
         .route("/api/threads/{id}/delegate", post(api::delegate))
         .route("/api/threads/batch", post(api::batch_threads))

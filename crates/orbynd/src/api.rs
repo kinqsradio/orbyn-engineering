@@ -901,6 +901,20 @@ pub async fn rotate_webhook(
     Ok(Json(state.core.rotate_webhook(&id, LOCAL_USER)?))
 }
 
+pub async fn task_webhook(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.webhook_address(&id)?))
+}
+
+pub async fn task_runs(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.task_runs(&id)?))
+}
+
 pub async fn task_deliveries(
     State(state): State<AppState>,
     Path(id): Path<String>,

@@ -28,9 +28,9 @@ goal?: ThreadGoal,
 scratch: boolean, 
 /**
  * The project was removed from Orbyn. The thread stays, archived, and cannot be
- * unarchived until the folder is added back.
+ * unarchived until the folder is added back. Absent unless true.
  */
-project_removed: boolean, 
+project_removed?: boolean, 
 /**
  * The removed project's name, kept so the archive can still say where it was.
  */

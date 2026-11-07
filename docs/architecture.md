@@ -1410,6 +1410,16 @@ tries again at the next time. Changing a task by id replaces what it does and ke
 what it earned: its history, pause, token and, unless replaced, signing secret. It
 stays in its project, and its thread must be in that project too.
 
+Every firing is noted in the task's run history, newest first and bounded to the last
+50: when it started, its source (`schedule`, `manual`, `webhook` or `after_thread`), the
+thread it works in and an outcome. A firing that could not start is `refused` with the
+reason; one put off by `task_skip_near_limit` is `skipped`; a started one is `queued`,
+`running` or the end state of the first run its thread began since, read when listed, so
+it is as current as the thread. `task_skip_near_limit` (off by default) makes a firing
+from the clock, not a manual or webhook one, wait for the next time when the task's
+engine reports a limit window at 90% or more; an engine that reports nothing never
+holds a task back.
+
 `POST /hooks/:id/:token` is public, because a sender cannot hold a session, though the
 `Host` and `Origin` checks still apply. The token is shown once and kept as a digest,
 and a wrong token is the same `404` as an unknown task and is not logged. Past the
@@ -2549,7 +2559,9 @@ because browsers cannot set headers on them.
 | `DELETE /api/tasks/:id`, `POST /api/tasks/:id/enabled` | Delete; `TaskEnabled` pauses or resumes |
 | `POST /api/tasks/:id/run` | Fire now (`202`, `{thread_id}`) |
 | `POST /api/tasks/:id/webhook` | `WebhookEndpoint`: issue or rotate the token, shown once |
-| `GET /api/tasks/:id/deliveries` | `WebhookDelivery[]`, newest 200 |
+| `GET /api/tasks/:id/webhook` | `WebhookAddress`: whether a token exists and the address up to it; the token itself is never returned |
+| `GET /api/tasks/:id/runs` | `TaskRun[]`, the last 50 firings, newest first |
+| `GET /api/tasks/:id/deliveries` | `WebhookDelivery[]`, newest 200, each with `from` when the request names a sender |
 | `POST /hooks/:id/:token` | Public webhook; `202` accepted, `200` with a status, `404` otherwise |
 | `GET, PUT /api/preferences?project_id=` | `PreferenceView[]`; `SetPreferences`, where `null` resets |
 | `PUT /api/projects/:id/preferences` | Project overrides |
