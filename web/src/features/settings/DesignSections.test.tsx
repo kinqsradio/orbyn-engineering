@@ -4,6 +4,7 @@ import { expect, it, vi } from "vitest";
 import { request } from "../../api/client";
 import type { EngineStatus } from "../../api/types";
 import { KeybindingsSection } from "./Keybindings";
+import { AboutSection } from "./PreferenceSections";
 import { ProviderTable } from "./ProviderTable";
 
 vi.mock("../../api/client", async (original) => ({ ...(await original<object>()), request: vi.fn() }));
@@ -44,4 +45,18 @@ it("draws shortcuts as key caps and names the command a shortcut clashes with", 
   expect(screen.getByText(/Archive thread and Delete both use/)).toBeVisible();
   await userEvent.type(screen.getByRole("textbox", { name: "Filter keybindings" }), "archive");
   expect(screen.queryByText("Command palette")).toBeNull();
+});
+
+it("opens the licence lists from About and narrows them by package name", async () => {
+  vi.mocked(request).mockResolvedValue({ version: "1.0.0", platform: "macos", remote: false });
+  const user = userEvent.setup();
+  render(<AboutSection />);
+  await user.click(await screen.findByRole("button", { name: "View lists" }));
+  const table = screen.getByRole("table", { name: "Packages" });
+  const before = within(table).getAllByRole("row").length;
+  await user.type(screen.getByRole("textbox", { name: "Find a package" }), "zzzz-no-such-package");
+  expect(within(table).getAllByRole("row")).toHaveLength(1);
+  expect(before).toBeGreaterThan(1);
+  await user.click(screen.getByRole("button", { name: "About" }));
+  expect(screen.getByRole("button", { name: "View lists" })).toBeVisible();
 });

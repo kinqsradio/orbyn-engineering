@@ -102,6 +102,7 @@ export const SETTINGS: readonly SettingSearchItem[] = [
   {"id": "maintenance-run-the-rules", "title": "Delete now", "section": "maintenance"},
   {"id": "maintenance-database", "title": "Database", "section": "maintenance"},
   {"id": "maintenance-check-for-updates", "title": "Check for updates", "section": "maintenance"},
+  {"id": "maintenance-background-checks", "title": "Background checks", "section": "maintenance"},
   {"id": "about-check-for-updates-automatically", "title": "Check for updates automatically", "section": "about"},
   {"id": "general-command-line-tool", "title": "Command line tool", "section": "general", "desktopOnly": true, "availability": "cli"},
   {"id": "appearance-dark-theme", "title": "Dark theme", "section": "appearance"},

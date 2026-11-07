@@ -407,6 +407,7 @@ export function MaintenanceSection() {
   const library = useWorkspace((state) => state.managed.data?.library);
   const unsupported = useWorkspace((state) => state.updatesUnsupported);
   const putUpdates = useWorkspace((state) => state.putUpdates);
+  const settings = useAsync("server-settings", (signal) => api.settings(signal));
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -434,14 +435,30 @@ export function MaintenanceSection() {
       {library?.native_skills === false ? <FallbackNotice /> : null}
       {library ? <Library library={library} /> : null}
       <LibraryChoice />
-      <SettingGroup title="Updates">
+      <SettingGroup title="App updates">
         {unsupported || updates?.app.unconfigured ? (
           <SettingRow title="App updates" description="Updates aren't set up for this build." />
         ) : null}
-        <SettingRow title={settingsLabel("maintenance-check-for-updates")} description={`Last checked: ${lastChecked}`}>
+        <SettingRow title={settingsLabel("maintenance-check-for-updates")} description={`Checked ${lastChecked}`}>
           <Button small busy={checking} onClick={() => void check()}>
             Check for updates
           </Button>
+        </SettingRow>
+        <SettingRow title={settingsLabel("maintenance-background-checks")} description="Look for updates while the app runs">
+          <input
+            type="checkbox"
+            role="switch"
+            aria-label="Background checks"
+            checked={settings.data?.background_update_checks !== false}
+            disabled={!settings.data}
+            onChange={(event) => {
+              if (!settings.data) return;
+              const next = { ...settings.data, background_update_checks: event.target.checked };
+              void api.putSettings(next).then(settings.setData, (failure: unknown) => {
+                setError(toFailure(failure).message);
+              });
+            }}
+          />
         </SettingRow>
       </SettingGroup>
       {updates?.error ? <p className="banner banner-warn">{updates.error}</p> : null}

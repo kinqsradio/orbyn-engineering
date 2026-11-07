@@ -409,3 +409,31 @@
   gap: 6px;
   margin-bottom: 10px;
 }
+.set-grp-tight {
+  padding-top: 10px;
+}
+.set-back {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0 8px;
+}
+.set-back-title {
+  margin: 0;
+  font-size: var(--text-section);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+}
+.set-licence-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0 10px;
+}
+.set-licence-bar .set-find {
+  flex: 1;
+  margin: 0;
+}
+.set-card .sub {
+  font-size: var(--text-meta);
+}

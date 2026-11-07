@@ -1,4 +1,4 @@
-import { Check, ChevronDown, RefreshCw, Search } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, RefreshCw, Search } from "lucide-react";
 import { settingsLabel } from "./settingsSearch";
 import { useEffect, useState } from "react";
 import { api, request } from "../../api/client";
@@ -13,6 +13,7 @@ import { Empty, ErrorState, Loading } from "../../ui/states";
 import { Segmented } from "../../ui/Segmented";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { unarchiveThread } from "../workspace/threadActions";
+import { ConfirmDialog } from "../../ui/Dialog";
 import { Menu } from "../../ui/Menu";
 import { Presence } from "../../ui/Presence";
 import { DETAIL_ROWS, detailsMenuItems } from "../thread/DetailsCard";
@@ -527,25 +528,35 @@ export function LabsSection() {
   );
 }
 
-function OpenSourceLicenses() {
-  const [open, setOpen] = useState(false);
-  const group = (title: string, entries: { name: string; version: string; license: string }[]) => (
-    <SettingGroup title={title}>
-      {entries.map((entry) => (
-        <SettingRow key={entry.name} title={entry.name} description={entry.version}>
-          {entry.license}
-        </SettingRow>
-      ))}
-    </SettingGroup>
-  );
+/** The two lists of open-source packages, one for the interface and one for the service. */
+function LicenceLists({ onBack }: { onBack(): void }) {
+  const [list, setList] = useState<"scripts" | "crates">("scripts");
+  const [filter, setFilter] = useState("");
+  const rows = licenses[list].filter((entry) => entry.name.toLowerCase().includes(filter.trim().toLowerCase()));
   return (
     <>
-      <SettingGroup>
-        <SettingRow title="Open-source licences">
-          <Button small aria-expanded={open} onClick={() => setOpen(!open)}>{open ? "Hide" : "View"}</Button>
-        </SettingRow>
-      </SettingGroup>
-      {open ? <>{group("Open source in the interface", licenses.scripts)}{group("Open source in the service", licenses.crates)}</> : null}
+      <div className="set-back">
+        <Button small tone="quiet" icon={<ChevronLeft size={13} aria-hidden />} onClick={onBack}>About</Button>
+        <h2 className="set-back-title">Open-source licences</h2>
+      </div>
+      <div className="set-licence-bar">
+        <Segmented<"scripts" | "crates"> label="Licence list" value={list} onChange={setList}
+          options={[{ value: "scripts", label: `App · ${licenses.scripts.length}` }, { value: "crates", label: `Service · ${licenses.crates.length}` }]} />
+        <label className="set-find">
+          <Search size={13} aria-hidden />
+          <input aria-label="Find a package" placeholder="Find a package" value={filter} onChange={(event) => setFilter(event.target.value)} />
+        </label>
+      </div>
+      <div className="set-tbl" role="table" aria-label="Packages">
+        <div className="set-tr h" role="row" style={{ gridTemplateColumns: "minmax(0, 1fr) 110px 110px" }}>
+          <span role="columnheader">Package</span><span role="columnheader">Version</span><span role="columnheader">Licence</span>
+        </div>
+        {rows.map((entry) => (
+          <div key={entry.name} role="row" className="set-tr" style={{ gridTemplateColumns: "minmax(0, 1fr) 110px 110px" }}>
+            <span role="cell">{entry.name}</span><span role="cell" className="t3">{entry.version}</span><span role="cell" className="t3">{entry.license}</span>
+          </div>
+        ))}
+      </div>
     </>
   );
 }
@@ -558,6 +569,7 @@ function AutomaticUpdateChecks() {
     <>
       <Toggle
         title={settingsLabel("about-check-for-updates-automatically")}
+        description="Same setting as Background checks in Maintenance"
         on={settings.data?.background_update_checks !== false}
         set={(on) => {
           if (!settings.data) return;
@@ -596,20 +608,24 @@ export const platformName = (id: string) => PLATFORM_NAMES[id] ?? id;
 
 export function AboutSection() {
   const info = useAsync("about-info", (signal) => api.info(signal));
+  const [licences, setLicences] = useState(false);
+  if (licences) return <><h1 className="sr-only" tabIndex={-1} data-page-title>About</h1><LicenceLists onBack={() => setLicences(false)} /></>;
   return (
     <>
       {heading("About")}
       <div className="set-card">
         <span className="set-logo" aria-hidden>O</span>
-        <div><b>Orbyn Engineering {info.data?.version ?? ""}</b></div>
+        <div>
+          <b>Orbyn Engineering {info.data?.version ?? ""}</b>
+          <br /><span className="t3 sub">Platform {info.data ? platformName(info.data.platform) : "Unknown"}</span>
+        </div>
       </div>
       <SettingGroup>
         <AutomaticUpdateChecks />
-      </SettingGroup>
-      <OpenSourceLicenses />
-      <SettingGroup title="Orbyn Engineering">
-        <SettingRow title="Platform">{info.data ? platformName(info.data.platform) : "Unknown"}</SettingRow>
         <TriageRow />
+        <SettingRow title="Open-source licences" description="The app and the service">
+          <Button small onClick={() => setLicences(true)}>View lists</Button>
+        </SettingRow>
       </SettingGroup>
     </>
   );
@@ -619,8 +635,8 @@ export function ArchiveSection() {
   const projects = useVisibleProjects();
   const [threads, setThreads] = useState<Thread[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState("");
-  const columns = { gridTemplateColumns: "minmax(0, 1fr) 160px 110px 150px" };
+  const [deleting, setDeleting] = useState<Thread | null>(null);
+  const columns = { gridTemplateColumns: "minmax(0, 1fr) 110px 190px" };
   useEffect(() => {
     if (!projects) return;
     const abort = new AbortController();
@@ -650,36 +666,43 @@ export function ArchiveSection() {
         <Empty title="No archived threads" />
       ) : (
         <>
-          <label className="set-find">
-            <Search size={13} aria-hidden />
-            <input aria-label="Find an archived thread" placeholder="Find an archived thread" value={filter} onChange={(event) => setFilter(event.target.value)} />
-          </label>
-          <div className="set-tbl" role="table" aria-label="Archived threads">
-            <div className="set-tr h" role="row" style={columns}>
-              <span role="columnheader">Thread</span><span role="columnheader">Project</span><span role="columnheader">Archived</span><span role="columnheader" />
-            </div>
-            {threads.filter((thread) => thread.title.toLowerCase().includes(filter.trim().toLowerCase())).map((thread) => (
-              <div key={thread.id} role="row" className="set-tr" style={columns}>
-                <span role="cell">{thread.title}</span>
-                <span role="cell" className="t3">{projects?.find((p) => p.id === thread.project_id)?.name ?? ""}</span>
-                <span role="cell" className="t3">{new Date(thread.updated_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
-                <span role="cell" className="row-actions">
-                  <Button
-                    small
-                    onClick={() => {
-                      void unarchiveThread(thread);
-                      setThreads(threads.filter((entry) => entry.id !== thread.id));
-                    }}
-                  >
-                    Restore
-                  </Button>
-                  <Button small tone="danger" onClick={() => void remove(thread)}>
-                    Delete
-                  </Button>
-                </span>
-              </div>
-            ))}
-          </div>
+          {(projects ?? []).map((project) => {
+            const owned = threads.filter((thread) => thread.project_id === project.id);
+            if (!owned.length) return null;
+            return (
+              <section key={project.id} aria-label={project.name}>
+                <p className="set-grp set-grp-tight">{project.name}</p>
+                <div className="set-tbl" role="table" aria-label={`Archived threads in ${project.name}`}>
+                  {owned.map((thread) => (
+                    <div key={thread.id} role="row" className="set-tr" style={columns}>
+                      <span role="cell">{thread.title}</span>
+                      <span role="cell" className="t3">{new Date(thread.updated_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
+                      <span role="cell" className="row-actions">
+                        <Button
+                          small
+                          onClick={() => {
+                            void unarchiveThread(thread);
+                            setThreads(threads.filter((entry) => entry.id !== thread.id));
+                          }}
+                        >
+                          Unarchive
+                        </Button>
+                        <Button small tone="danger" onClick={() => setDeleting(thread)}>
+                          Delete
+                        </Button>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            );
+          })}
+          {deleting ? (
+            <ConfirmDialog title={`Delete “${deleting.title}”?`} confirmLabel="Delete thread" tone="danger" cancelFocus
+              onClose={() => setDeleting(null)} onConfirm={() => remove(deleting)}>
+              <p>The thread and its messages are removed from this computer. This can’t be undone.</p>
+            </ConfirmDialog>
+          ) : null}
         </>
       )}
     </>
