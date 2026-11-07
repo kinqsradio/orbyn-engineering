@@ -29,6 +29,8 @@
   },
   "bundle": {
     "active": true,
+    "license": "PolyForm-Strict-1.0.0",
+    "licenseFile": "../../LICENSE",
     "targets": [
       "app",
       "dmg",
