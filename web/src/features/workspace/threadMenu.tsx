@@ -267,7 +267,7 @@ export function RenameThreadDialog({ thread, onClose }: { thread: Thread; onClos
         }}
       >
         <input
-          className="rename-field"
+          className="dialog-field"
           aria-label="Thread title"
           data-dialog-focus
           value={value}

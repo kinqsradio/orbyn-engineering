@@ -73,10 +73,10 @@ describe("surface tabs", () => {
     expect(onReturn).toHaveBeenCalled();
   });
 
-  it("offers Back to thread instead of maximize when it covers the thread", () => {
+  it("offers Back to thread and the same Maximise button when it covers the thread", () => {
     pane({ overlay: true });
     expect(screen.getByRole("button", { name: "Back to thread" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Maximise panel" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Maximise panel" })).toBeInTheDocument();
     expect(screen.getAllByRole("tab")).toHaveLength(6);
   });
 

@@ -115,7 +115,6 @@ interface Prefs {
   /** Moves working threads, and ones waiting on delegated work, to their own shelf. */
   workingSection: boolean;
   /** Provider updates already dismissed, as `engine:version`. */
-  dismissedProviderUpdates: string[];
   /** The environment theme's `set_at` this viewer last applied; 0 is never. */
   environmentThemeAppliedAt: number;
   /** How the sidebar marks this environment's build: channel artwork, a version pill or nothing. */
@@ -156,7 +155,7 @@ export interface ThreadLayout {
 export const DRAFT_LAYOUT = "draft";
 const MAX_LAYOUTS = 200;
 
-export type PaletteStart = "root" | "add-project" | "add-project-url" | "files" | "search";
+export type PaletteStart = "root" | "add-project" | "add-project-url" | "add-project-new" | "files" | "search";
 
 export const DEFAULT_SIDEBAR_WIDTH = 224;
 const TOAST_MS = 4000;
@@ -236,7 +235,6 @@ const defaults: Prefs = {
   pullLinksInApp: true,
   detailsHidden: ["usage"],
   workingSection: true,
-  dismissedProviderUpdates: [],
   environmentThemeAppliedAt: 0,
   environmentIdentification: "artwork",
   welcomeDone: false,
@@ -403,7 +401,6 @@ const prefsOf = (state: Prefs): Prefs => ({
   pullLinksInApp: state.pullLinksInApp,
   detailsHidden: state.detailsHidden,
   workingSection: state.workingSection,
-  dismissedProviderUpdates: state.dismissedProviderUpdates,
   environmentThemeAppliedAt: state.environmentThemeAppliedAt,
   environmentIdentification: state.environmentIdentification,
   welcomeDone: state.welcomeDone,

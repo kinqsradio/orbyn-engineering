@@ -1,4 +1,4 @@
-import { Download, Folder } from "lucide-react";
+import { Download, Folder, Plus } from "lucide-react";
 import { useUi } from "../../state/ui";
 import { Button } from "../../ui/controls";
 import { SkillsNotice } from "./SkillsNotice";
@@ -14,8 +14,11 @@ export function NoProjects() {
       </h1>
       <p>Point Orbyn at a folder with code. Agents work in it in place.</p>
       <div className="no-projects-actions">
+        <Button small icon={<Plus size={13} aria-hidden />} onClick={() => setPalette("add-project-new")}>
+          New project
+        </Button>
         <Button small icon={<Download size={13} aria-hidden />} onClick={() => setPalette("add-project-url")}>
-          Clone from GitHub
+          Clone a repository
         </Button>
         <Button tone="primary" small icon={<Folder size={13} aria-hidden />} onClick={() => setPalette("add-project")}>
           Add a folder

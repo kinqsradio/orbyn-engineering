@@ -451,11 +451,11 @@ li[data-selected] .thread-row {
 .thread-row[data-multiline] {
   padding-block: 6px;
 }
-/* The Rename thread dialog's field: 36px, a hairline, 10px corners. */
+/* A dialog's single field: 36px, a hairline, 10px corners. */
 .rename-form {
   display: contents;
 }
-input.rename-field {
+input.dialog-field {
   display: flex;
   align-items: center;
   min-height: 0;
@@ -466,6 +466,10 @@ input.rename-field {
   background: var(--color-background);
   color: var(--color-text);
   font-size: var(--text-small);
+}
+input.dialog-field-mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-nav);
 }
 .row-trailing {
   position: relative;
@@ -594,8 +598,32 @@ li[data-highlight] .thread-row {
   font-size: var(--text-small);
   cursor: pointer;
 }
+.folder-toggle {
+  position: relative;
+}
 .folder-toggle:hover {
   background: var(--color-rowHover);
+}
+/* The collapse chevron sits at the left of the row and shows on hover and keyboard focus. */
+.folder-chev {
+  position: absolute;
+  top: 50%;
+  left: -4px;
+  margin-top: -6px;
+  opacity: 0;
+  transition: opacity var(--m-fast), transform var(--m-fast) var(--m-io);
+}
+.folder-toggle:hover .folder-chev,
+.folder-toggle:focus-visible .folder-chev {
+  opacity: 1;
+}
+/* A project with no chosen icon keeps its colour swatch. */
+.project-swatch {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-3);
+  background: var(--tint);
 }
 .folder-name {
   flex: 1;
@@ -1196,40 +1224,6 @@ li[data-file-over] .thread-row {
   line-height: 16px;
   cursor: pointer;
 }
-.provider-update {
-  display: flex;
-  align-items: center;
-  flex: none;
-  min-width: 0;
-  margin: 0 8px 4px;
-  border-radius: var(--radius-md);
-  background: var(--color-rowHover);
-  font-size: var(--text-meta);
-}
-.provider-update button {
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  cursor: pointer;
-}
-.provider-update button:first-child {
-  flex: 1;
-  overflow: hidden;
-  padding: 4px 8px;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.provider-update button:last-child {
-  display: inline-grid;
-  place-items: center;
-  flex: none;
-  width: 24px;
-  height: 24px;
-  color: var(--color-muted);
-}
 .environment-identity {
   display: inline-flex;
   flex: none;
@@ -1330,4 +1324,8 @@ li[data-file-over] .thread-row {
     transition-duration: var(--hold-ms) !important;
     transition-timing-function: linear !important;
   }
+}
+/* A field's focus ring sits outside its box, so the dialog body must not clip it. */
+.dialog-body:has(.dialog-field) {
+  overflow: visible;
 }

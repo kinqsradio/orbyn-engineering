@@ -1,4 +1,5 @@
-import { Check, Folder, ListFilter, Settings } from "lucide-react";
+import { Check, Folder, Settings } from "lucide-react";
+import { SlidersIcon } from "../../ui/SlidersIcon";
 import { useMemo, useRef, useState } from "react";
 import type { Project } from "../../api/types";
 import { navigate } from "../../state/route";
@@ -73,7 +74,7 @@ export function ProjectFilter({ projects }: { projects: readonly Project[] }) {
         ) : scoped[0] ? (
           <ProjectBadge name={scoped[0].name} project={scoped[0]} />
         ) : (
-          <ListFilter size={16} aria-hidden />
+          <SlidersIcon size={14} />
         )}
       </button>
       {open ? (

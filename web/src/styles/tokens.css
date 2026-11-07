@@ -90,6 +90,7 @@
   --radius-xl: 16px;
   --radius-pill: 999px;
   /* Further radii the internal designs use, at their exact values. */
+  --radius-3: 3px;
   --radius-5: 5px;
   --radius-7: 7px;
   --radius-9: 9px;

@@ -4,9 +4,9 @@ import {
   Clock,
   Copy,
   FilePen,
-  FolderPlus,
   GitPullRequest,
   Layers,
+  Plus,
   Search,
   Settings,
   ShieldAlert,
@@ -34,6 +34,7 @@ import { navigate, routeHref, type Route } from "../../state/route";
 import { DEFAULT_SIDEBAR_WIDTH, useUi } from "../../state/ui";
 import { useVisibleProjects, useWorkspace } from "../../state/workspace";
 import { ProjectBadge } from "../../ui/badges";
+import { deriveProjectIdentity } from "../../lib/projectIdentity";
 import { Collapsible } from "../../ui/Collapsible";
 import { IconButton } from "../../ui/controls";
 import { ConfirmDialog } from "../../ui/Dialog";
@@ -75,7 +76,7 @@ import { bulkMenuItems, CustomSnoozeDialog, RenameThreadDialog, snoozeChildren, 
 import { ThreadRow, type RowActions } from "./ThreadRow";
 import { useDrawnOrder } from "./drawnOrder";
 import { pushUndo, undoLabel, undoLatest, useUndoNotice } from "./threadUndo";
-import { ProviderUpdatePill, UpdatePill } from "./Updates";
+import { UpdatePill } from "./Updates";
 
 const SETTLED_PAGE = 10;
 
@@ -336,8 +337,6 @@ function SidebarNav({ route, ledger }: { route: Route; ledger: boolean }) {
 function SidebarFoot({ route, ledger }: { route: Route; ledger: boolean }) {
   return (
     <div className="sidebar-foot">
-      {/* Their own rows: the footer has no room left for a readable label. */}
-      <ProviderUpdatePill />
       <UndoNotice />
       <UpdatePill />
       {ledger ? <SidebarNav route={route} ledger /> : null}
@@ -381,7 +380,12 @@ function FolderHeader({
           onMenu(event);
         }}
       >
-        <ProjectBadge name={project.name} project={project} />
+        <ChevronRight size={12} className="chev folder-chev" aria-hidden />
+        {project.project_icon ? (
+          <ProjectBadge name={project.name} project={project} />
+        ) : (
+          <span className={`project-swatch project-color-${deriveProjectIdentity(project.name).color}`} aria-hidden />
+        )}
         <span className="folder-name">{label}</span>
         {needs > 0 ? (
           <span className="folder-needs">
@@ -390,7 +394,6 @@ function FolderHeader({
           </span>
         ) : null}
         {collapsed && count > 0 ? <span className="group-count">{count}</span> : null}
-        <ChevronRight size={12} className="chev" aria-hidden />
       </button>
       <a
         className="icon-btn folder-new"
@@ -1027,7 +1030,7 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
           </IconButton>
           <ProjectFilter projects={list} />
           <IconButton label="Add project" onClick={() => setPalette("add-project")}>
-            <FolderPlus size={14} aria-hidden />
+            <Plus size={14} aria-hidden />
           </IconButton>
         </span>
       </div>

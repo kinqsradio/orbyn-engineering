@@ -281,7 +281,8 @@ export const api = {
   updateLibrary: (apply: boolean) =>
     request<LibraryUpdateResult>("POST", "/api/workspace/update", { apply }),
   rollbackLibrary: () => request<LibraryUpdateResult>("POST", "/api/workspace/rollback"),
-  createProject: (name: string) => request<Project>("POST", "/api/projects/create", { name, readme: true }),
+  createProject: (name: string, path?: string) =>
+    request<Project>("POST", "/api/projects/create", { name, readme: false, ...(path ? { path } : {}) }),
   addProject: (path: string) => request<Project>("POST", "/api/projects/add", { path }),
   renameSelectedProjects: (change: RenameSelectedProjects) => request<Project[]>("POST", "/api/settings/projects/rename", change),
   changeProjectIcon: (change: ChangeProjectIcon) => request<Project[]>("POST", "/api/settings/projects/icon", change),

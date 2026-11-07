@@ -1,7 +1,6 @@
-import { AlertCircle, Check, CircleDashed, Download, Loader2, X } from "lucide-react";
+import { AlertCircle, Check, CircleDashed, Download, Loader2 } from "lucide-react";
 import { useState } from "react";
 import type { UpdateStatus } from "../../api/types";
-import { useUi } from "../../state/ui";
 import {
   appHasUpdate,
   engineHasUpdate,
@@ -95,8 +94,17 @@ export function UpdateEverythingDialog({ onClose }: { onClose(): void }) {
       latest: engine.latest,
       kind: "CLI",
     })),
-    ...(status.library.behind > 0
-      ? [{ key: "library", name: "Skills library", current: status.library.current, latest: status.library.latest, kind: "Library" }]
+    // The row is always there once the library has a version: the change, or that it is current.
+    ...(status.library.current
+      ? [
+          {
+            key: "library",
+            name: "Skills library",
+            current: status.library.current,
+            latest: status.library.behind > 0 ? status.library.latest : null,
+            kind: "Library",
+          },
+        ]
       : []),
   ];
 
@@ -136,7 +144,11 @@ export function UpdateEverythingDialog({ onClose }: { onClose(): void }) {
               <span>
                 <b className="update-name">{row.name}</b>
                 <br />
-                <Versions current={row.current} latest={row.latest} />
+                {row.latest === null && row.key === "library" ? (
+                  <span className="update-versions">{short(row.current)} · Up to date</span>
+                ) : (
+                  <Versions current={row.current} latest={row.latest} />
+                )}
               </span>
               <span className="update-kind">{row.kind}</span>
             </div>
@@ -152,39 +164,6 @@ export function UpdateEverythingDialog({ onClose }: { onClose(): void }) {
 }
 
 /** Appears only when there's something to do, and carries progress and failure. */
-/** Names an engine's update on its own, and stays gone once dismissed for that version. */
-export function ProviderUpdatePill() {
-  const status = useWorkspace((state) => state.updates.data);
-  const engines = useWorkspace((state) => state.engines.data);
-  const dismissed = useUi((state) => state.dismissedProviderUpdates);
-  const setPrefs = useUi((state) => state.setPrefs);
-  const [open, setOpen] = useState(false);
-  const key = (id: string, latest: string | null) => `${id}:${latest ?? ""}`;
-  const pending = (status?.engines ?? []).filter(
-    (engine) => engineHasUpdate(engine) && !dismissed.includes(key(engine.id, engine.latest)),
-  );
-  const first = pending[0];
-  if (!first) return null;
-  const name = engines?.find((engine) => engine.id === first.id)?.name ?? first.id;
-  return (
-    <>
-      <span className="provider-update">
-        <button type="button" onClick={() => setOpen(true)}>
-          {pending.length === 1 ? `${name} update` : `${pending.length} provider updates`}
-        </button>
-        <button
-          type="button"
-          aria-label="Dismiss provider update"
-          onClick={() => setPrefs({ dismissedProviderUpdates: [...dismissed, ...pending.map((engine) => key(engine.id, engine.latest))] })}
-        >
-          <X size={12} aria-hidden />
-        </button>
-      </span>
-      {open ? <UpdateEverythingDialog onClose={() => setOpen(false)} /> : null}
-    </>
-  );
-}
-
 export function UpdatePill() {
   const status = useWorkspace((state) => state.updates.data);
   const run = useWorkspace((state) => state.updateRun);

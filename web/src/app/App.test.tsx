@@ -75,6 +75,13 @@ describe("App against the mock API", () => {
     expect(await within(nav).findByText("Unmanaged")).toBeInTheDocument();
   });
 
+  it("marks a project with no chosen icon by a colour swatch, with its collapse chevron at the left", async () => {
+    const { container } = render(<App />);
+    await screen.findByRole("navigation", { name: "Workspace" });
+    await waitFor(() => expect(container.querySelector(".folder-toggle .project-swatch")).not.toBeNull());
+    expect(container.querySelector(".folder-toggle .folder-chev")).not.toBeNull();
+  });
+
   it("pins Working open and keeps Settled collapsed behind a count", async () => {
     const user = userEvent.setup();
     for (const thread of mock.threads.slice(10)) {
@@ -153,8 +160,20 @@ describe("App against the mock API", () => {
       expect(within(dialog).getByText("Claude Code")).toBeInTheDocument();
       expect(within(dialog).getByText("2.1.14 → 2.1.20")).toBeInTheDocument();
       expect(within(dialog).getByText("Restarts the app")).toBeInTheDocument();
+      expect(within(dialog).getByText("Skills library")).toBeInTheDocument();
+      expect(within(dialog).getByText("8ede3c40 → a1b2c3d0")).toBeInTheDocument();
+      expect(within(dialog).getByText("Library")).toBeInTheDocument();
       expect(within(dialog).getByText(/runs are active/)).toBeInTheDocument();
       expect(within(dialog).getByRole("button", { name: "Update everything" })).toBeDisabled();
+    });
+
+    it("keeps the Skills library row, saying it is up to date, when nothing newer exists", async () => {
+      mock.patchUpdates({ library: { ...mock.updates.library, behind: 0, incoming: [] } });
+      const user = userEvent.setup();
+      render(<App />);
+      await user.click(await screen.findByRole("button", { name: /Updates available/ }));
+      const dialog = await screen.findByRole("dialog", { name: "Update everything" });
+      expect(within(dialog).getByText("8ede3c40 · Up to date")).toBeInTheDocument();
     });
 
     it("runs in order, stops at the first failure and retries", async () => {
@@ -217,7 +236,6 @@ describe("App against the mock API", () => {
     expect(await screen.findByRole("heading", { name: "Add your first project" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Add a folder" }));
     const palette = await screen.findByRole("dialog", { name: "Command palette" });
-    await user.click(within(palette).getByRole("button", { name: /Local folder/ }));
     const field = await within(palette).findByLabelText("Folder path");
     // Typed straight after the starting ~/, an absolute path replaces it.
     await user.type(field, "/Users/dev/code/payments-service{Enter}");
@@ -242,10 +260,11 @@ describe("App against the mock API", () => {
     const user = userEvent.setup();
     render(<App />);
     const palette = await openAddProject(user);
-    await user.click(within(palette).getByRole("button", { name: /Git URL/ }));
-    const field = within(palette).getByLabelText("Git clone URL");
+    await user.click(within(palette).getByRole("button", { name: /Clone a repository/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Clone a repository" });
+    const field = within(dialog).getByLabelText("Git URL or owner/name");
     await user.type(field, "https://example.com/team/repo.git{Enter}");
-    expect(await within(palette).findByRole("alert")).toHaveTextContent("The remote refused.");
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("The remote refused.");
     expect(field).toHaveValue("https://example.com/team/repo.git");
     await user.keyboard("{Enter}");
     expect(await screen.findByRole("heading", { name: /^Trust .+\?$/ }, { timeout: 3000 })).toBeInTheDocument();
@@ -256,7 +275,8 @@ describe("App against the mock API", () => {
     render(<App />);
     const palette = await openAddProject(user);
     await user.click(within(palette).getByRole("button", { name: /New project/ }));
-    await user.type(within(palette).getByLabelText("Project name"), "fresh-idea{Enter}");
+    const dialog = await screen.findByRole("dialog", { name: "New project" });
+    await user.type(within(dialog).getByLabelText("Name"), "fresh-idea{Enter}");
     expect(await screen.findByRole("heading", { name: /What should we build in/ })).toBeInTheDocument();
   });
 
@@ -264,7 +284,6 @@ describe("App against the mock API", () => {
     const user = userEvent.setup();
     render(<App />);
     const palette = await openAddProject(user);
-    await user.click(within(palette).getByRole("button", { name: /Local folder/ }));
     const field = await within(palette).findByLabelText("Folder path");
     await user.clear(field);
     await user.type(field, "/Users/dev/code/site/{Enter}");

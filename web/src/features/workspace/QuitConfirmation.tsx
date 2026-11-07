@@ -92,18 +92,16 @@ export function QuitConfirmation() {
 
   const prompt = state.prompt ?? (fill === "releasing" ? "hold" : null);
   if (!prompt) return null;
-  const note =
-    working > 0
-      ? `${working} ${working === 1 ? "agent is" : "agents are"} working.`
-      : null;
-  const hint = `${note ? `${note} ` : ""}Or press ⌘Q again.`;
+  const agents = `${working} ${working === 1 ? "agent is" : "agents are"} working`;
+  const holdNote = `${working > 0 ? `${agents}. ` : ""}Keep holding ⌘Q.`;
+  const againNote = working > 0 ? `${agents} and will stop.` : null;
   return (
     <div className="quit-overlay" role="status" aria-live="assertive">
       <kbd className="quit-key">⌘ Q</kbd>
       {prompt === "hold" ? (
         <>
           <b>Hold to quit</b>
-          <span className="quit-note">{hint}</span>
+          <span className="quit-note">{holdNote}</span>
           <span
             ref={bar}
             className="quit-progress"
@@ -115,7 +113,7 @@ export function QuitConfirmation() {
       ) : (
         <>
           <b>Press ⌘Q again to quit</b>
-          {note ? <span className="quit-note">{note}</span> : null}
+          {againNote ? <span className="quit-note">{againNote}</span> : null}
         </>
       )}
     </div>

@@ -67,7 +67,8 @@ function useMessageSearch(query: string, enabled: boolean) {
 export function CommandPalette({ start, onClose }: { start: PaletteStart; onClose(): void }) {
   const threads = useWorkspace((state) => state.threads);
   const allProjects = useWorkspace((state) => state.projects.data);
-  const [adding, setAdding] = useState(start === "add-project" || start === "add-project-url");
+  const [adding, setAdding] = useState(start === "add-project" || start === "add-project-url" || start === "add-project-new");
+  const [subdialog, setSubdialog] = useState(false);
   const ref = useRef<HTMLDialogElement>(null);
   const [newIn, setNewIn] = useState(false);
   const projects = useVisibleProjects();
@@ -221,6 +222,7 @@ export function CommandPalette({ start, onClose }: { start: PaletteStart; onClos
     <dialog
       ref={ref}
       className="palette"
+      data-subdialog={subdialog || undefined}
       aria-label="Command palette"
       onCancel={(event) => {
         event.preventDefault();
@@ -232,9 +234,9 @@ export function CommandPalette({ start, onClose }: { start: PaletteStart; onClos
     >
       {adding ? (
         <AddProjectPalette
-          initialView={start === "add-project-url" ? "clone" : "sources"}
-          onBack={() => (start === "add-project" || start === "add-project-url" ? onClose() : setAdding(false))}
+          initialView={start === "add-project-url" ? "clone" : start === "add-project-new" ? "new" : "folders"}
           onClose={onClose}
+          onSubdialog={setSubdialog}
         />
       ) : (
         <>

@@ -7,7 +7,7 @@ import { EnvironmentIdentity } from "../features/workspace/EnvironmentIdentity";
 import { useThreadLogs } from "../features/thread/threadLogs";
 import { useAsync } from "../lib/useAsync";
 import { labels } from "../features/settings/SettingsPage";
-import { routeHref, type Route } from "../state/route";
+import { navigate, type Route } from "../state/route";
 import { usePageLabel } from "../state/pageLabel";
 import { useReadingNav } from "./readingNav";
 import { useUi } from "../state/ui";
@@ -145,18 +145,23 @@ export function TitleBar({ route, narrow }: { route: Route; narrow: boolean }) {
     <header className="titlebar" data-nav={shown ? "shown" : "hidden"} data-tauri-drag-region>
       <div ref={dragLayer} className="titlebar-drag" data-tauri-drag-region aria-hidden />
       {lights ? <span className="titlebar-lights" aria-hidden /> : null}
-      {narrow ? null : (
-        <button
-          type="button"
-          className="tbi"
-          aria-label={sidebarLabel}
-          aria-expanded={shown}
-          data-sidebar-toggle
-          onClick={reading ? toggleReadingNav : toggleSidebar}
-        >
-          <PanelLeft size={16} aria-hidden />
-        </button>
-      )}
+      <button
+        type="button"
+        className="tbi"
+        aria-label={sidebarLabel}
+        aria-expanded={shown}
+        data-sidebar-toggle
+        onClick={
+          narrow
+            ? // Narrow, the sidebar is the home page: it opens by going home and closes by leaving it.
+              () => navigate(shown ? { name: "new", projectId: null } : { name: "home" })
+            : reading
+              ? toggleReadingNav
+              : toggleSidebar
+        }
+      >
+        <PanelLeft size={16} aria-hidden />
+      </button>
       <button type="button" className="tbi" aria-label="Back" aria-disabled={!trail.back} data-dim={!trail.back || undefined} onClick={() => trail.back && goBack()}>
         <ChevronLeft size={16} aria-hidden />
       </button>
@@ -164,10 +169,10 @@ export function TitleBar({ route, narrow }: { route: Route; narrow: boolean }) {
         <ChevronRight size={16} aria-hidden />
       </button>
       {shown ? null : (
-        <a className="titlebar-title" href={routeHref({ name: "home" })} title="Orbyn Engineering">
+        <span className="titlebar-title" title="Orbyn Engineering">
           <b>Orbyn</b>
           <span className="titlebar-page-label"> · {page}</span>
-        </a>
+        </span>
       )}
       <span className="titlebar-end">
         <EnvironmentIdentity />

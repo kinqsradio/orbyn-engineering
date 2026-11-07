@@ -299,11 +299,9 @@ export function SurfacePane({
               <MoreHorizontal size={16} aria-hidden />
             </IconButton>
           ) : null}
-          {overlay ? null : (
-            <IconButton label={maximized ? "Restore side panel" : "Maximise panel"} onClick={onToggleMaximize}>
-              {maximized ? <Minimize2 size={16} aria-hidden /> : <Maximize2 size={16} aria-hidden />}
-            </IconButton>
-          )}
+          <IconButton label={maximized ? "Restore side panel" : "Maximise panel"} onClick={onToggleMaximize}>
+            {maximized ? <Minimize2 size={16} aria-hidden /> : <Maximize2 size={16} aria-hidden />}
+          </IconButton>
           <IconButton label="Close side panel" onClick={onReturn}>
             <X size={16} aria-hidden />
           </IconButton>
