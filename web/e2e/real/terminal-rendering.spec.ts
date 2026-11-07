@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { startProject } from "./service";
+import { openDetails, startProject } from "./service";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -11,7 +11,7 @@ test("completed action output is visible on first attach and tab return", async 
     } });
     const thread = await service.api<{ id: string }>("POST", "/api/threads", { project_id: projectId, engine: "codex", title: "Terminal rendering" });
     await page.goto(`${service.page}#/threads/${thread.id}`);
-    await page.getByRole("complementary", { name: "Thread details" }).getByRole("button", { name: "Visible output", exact: true }).click();
+    await (await openDetails(page)).getByRole("button", { name: "Visible output", exact: true }).click();
     await expect(page.getByRole("tab", { name: "Visible output", exact: true })).toHaveAttribute("aria-selected", "true");
     const rows = page.locator(".terminal-drawer-body .xterm-rows");
     await expect(rows).toContainText("action-visible-output");
@@ -32,11 +32,11 @@ fs.writeFileSync('counter', String(next)); console.log('action-output-' + next);
     } });
     const thread = await service.api<{ id: string }>("POST", "/api/threads", { project_id: projectId, engine: "codex", title: "Replacement output" });
     await page.goto(`${service.page}#/threads/${thread.id}`);
-    const run = page.getByRole("complementary", { name: "Thread details" }).getByRole("button", { name: "Counter output", exact: true });
+    const run = async () => (await openDetails(page)).getByRole("button", { name: "Counter output", exact: true }).click();
     const rows = page.locator(".terminal-drawer-body .xterm-rows");
-    await run.click();
+    await run();
     await expect(rows).toContainText("action-output-1");
-    await run.click();
+    await run();
     await expect.poll(async () => {
       const terminals = await service.api<{ id: string; script: string | null }[]>("GET", `/api/threads/${thread.id}/terminals`);
       const action = terminals.find((terminal) => terminal.script === "Counter output");
