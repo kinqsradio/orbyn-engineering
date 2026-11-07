@@ -41,7 +41,8 @@ test("a dropped stream shows reconnecting and loses nothing", async ({ page }) =
   await box.press("Enter");
   await expect(page.getByText(/^Work(ed|ing) for/)).toBeVisible();
   await page.evaluate(() => fetch("/__mock/drop-streams"));
-  await expect(page.getByText(/^Reconnecting/)).toBeVisible();
+  // A stream that cannot reconnect is the service not answering: the header says Paused and the composer carries the banner.
+  await expect(page.getByRole("status").filter({ hasText: "Can’t reach the Orbyn service" })).toBeVisible();
   await expect(page.locator(".thread-state")).toHaveText("Completed", { timeout: 10_000 });
   await expect(page.locator(".msg-assistant")).toContainText("Stop the run with Cancel, or wait for it to finish.");
 });
@@ -63,16 +64,15 @@ test("narrow layout is one surface with a way back", async ({ page }) => {
   await page.getByRole("button", { name: /^Changes/ }).click();
   await expect(page.getByRole("tablist", { name: "Context" })).toBeVisible();
   await page.getByRole("button", { name: "Back to thread" }).click();
-  await page.getByRole("button", { name: "Close details" }).click();
   await page.getByRole("link", { name: "Back to threads" }).click();
   await expect(page.getByRole("navigation", { name: "Workspace" })).toBeVisible();
 });
 
 test("Escape closes a dialog and returns focus to its opener", async ({ page }) => {
   await page.goto("/#/settings/providers");
-  const open = page.getByRole("button", { name: "Update to 2.1.20" });
+  const open = page.getByRole("button", { name: /^Updates available/ });
   await open.click();
-  const dialog = page.getByRole("dialog", { name: /^Update / });
+  const dialog = page.getByRole("dialog", { name: "Update everything" });
   await expect(dialog).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
@@ -95,6 +95,8 @@ test("keyboard focus is visible and reduced motion stops animation", async ({ pa
 
 test("first run opens on the draft flow with nothing to set up", async ({ page }) => {
   await page.goto("/__mock/scenario/first-run");
+  // The welcome steps open first and are never a gate: one click leaves them for the draft flow.
+  await page.getByRole("button", { name: "Skip for now" }).click();
   await expect(page.getByRole("heading", { name: "Add your first project" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Workspace" })).toBeVisible();
   await expect(page.getByText(/set up/i)).toHaveCount(0);
@@ -102,9 +104,11 @@ test("first run opens on the draft flow with nothing to set up", async ({ page }
 
 test("unavailable skills get a quiet line, never a blocking screen", async ({ page }) => {
   await page.goto("/__mock/scenario/no-skills");
+  await page.getByRole("button", { name: "Skip for now" }).click();
   await expect(page.getByRole("heading", { name: "Add your first project" })).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "Skills aren't available right now" })).toBeVisible();
-  await page.getByRole("button", { name: "Start without a project" }).click();
+  // The empty home no longer offers a project-less start; its draft is still the scratch route.
+  await page.evaluate(() => (location.hash = "#/new/scratch"));
   await expect(page.getByRole("textbox", { name: /^Message/ })).toBeVisible();
 });
 
@@ -203,10 +207,10 @@ test("the side panel slides in over 300 ms ease-out and out over 210 ms ease-in-
   const panel = page.getByRole("complementary", { name: "Thread context" });
   await expect(page.getByRole("heading", { name: "Explain how the event log resumes" })).toBeVisible();
   await expect(panel).toBeHidden();
-  await page.getByRole("button", { name: "Surfaces", exact: true }).click();
+  await page.getByRole("button", { name: "Show side panel" }).click();
   await expect(panel).toBeVisible();
   expect(await contextMotion(page)).toEqual({ property: "translate", duration: 300, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" });
-  await page.getByRole("button", { name: "Close surfaces" }).click();
+  await page.getByRole("button", { name: "Close side panel" }).click();
   expect(await contextMotion(page)).toEqual({ property: "translate", duration: 210, easing: "cubic-bezier(0.4, 0, 0.2, 1)" });
   await expect(panel).toBeHidden();
 });
@@ -305,7 +309,6 @@ test("the draft keeps its text and files through a project switch and adding a f
   await page.locator(".hero-project").click();
   await page.getByRole("option", { name: "Add project" }).click();
   const palette = page.getByRole("dialog", { name: "Command palette" });
-  await palette.getByRole("button", { name: /Local folder/ }).click();
   await palette.getByLabel("Folder path").fill("/Users/dev/code/fresh-folder");
   await palette.getByLabel("Folder path").press("Enter");
   await page.getByRole("button", { name: "Trust folder" }).click();
@@ -360,39 +363,40 @@ test("Reading folds the sidebar away on a wide window, but a narrow home is stil
   await page.setViewportSize({ width: 1280, height: 760 });
   await page.goto("/#/threads/t-done");
   await expect(page.locator(".sidebar")).toHaveCount(0);
-  const toggle = page.getByRole("button", { name: "Expand sidebar" });
+  const toggle = page.getByRole("button", { name: "Show sidebar" });
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await toggle.click();
   await expect(page.locator(".sidebar")).toBeVisible();
   await page.locator(".sidebar a").first().focus();
-  await page.getByRole("button", { name: "Collapse sidebar" }).click();
+  await page.getByRole("button", { name: "Hide sidebar" }).click();
   await expect(page.locator(".sidebar")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Expand sidebar" })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Show sidebar" })).toBeFocused();
 });
 
-test("the panel shows all six tabs at 380px, and its list opens from the chosen tab and the palette", async ({ page }) => {
+test("the panel shows all six tabs at 380px, and the arrow keys move between them", async ({ page }) => {
   await page.setViewportSize({ width: 1500, height: 900 });
-  await page.addInitScript(() => localStorage.setItem("orbyn.prefs.v1", JSON.stringify({ panelOpen: true, panelTab: "files" })));
-  await page.goto("/__mock/scenario/default");
-  await page.goto("/#/threads/t-done");
-  await page.getByRole("button", { name: "Surfaces", exact: true }).click();
+  await page.goto("/__mock/scenario/default?to=/%23/threads/t-done");
+  await page.getByRole("button", { name: "Show side panel" }).click();
   await page.getByRole("tab", { name: "Files" }).click();
   const row = page.getByRole("tablist", { name: "Context" });
   await expect(row).toBeVisible();
+  await expect(row.getByRole("tab")).toHaveText(["Diff", "Files", "Browser", "Activity", "PRs", "Side chat"]);
   const m = await row.evaluate((e) => ({ sw: e.scrollWidth, cw: e.clientWidth, o: e.hasAttribute("data-overflow"), w: e.closest(".context")!.getBoundingClientRect().width }));
+  expect(m.w).toBe(380);
   expect(m.sw).toBeLessThanOrEqual(m.cw);
   expect(m.o).toBe(false);
-  await page.getByRole("tab", { name: "Files" }).click();
-  await expect(page.locator(".launcher")).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("tab", { name: "Files" })).toHaveAttribute("aria-selected", "true");
-  await page.getByRole("tab", { name: "Files" }).focus();
-  await page.keyboard.press("Enter");
-  await expect(page.locator(".launcher")).toBeVisible();
-  await page.keyboard.press("b");
+  // Nothing is folded into More, and with no tab closed there is no "+" either.
+  await expect(page.getByRole("button", { name: "More tabs" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Open a tab" })).toHaveCount(0);
+  // One tab stop: the chosen tab. The arrows move the choice, and End and Home reach the ends.
+  const files = page.getByRole("tab", { name: "Files" });
+  await expect(files).toHaveAttribute("aria-selected", "true");
+  await files.focus();
+  await page.keyboard.press("ArrowRight");
   await expect(page.getByRole("tab", { name: "Browser" })).toHaveAttribute("aria-selected", "true");
-  await page.keyboard.press("ControlOrMeta+k");
-  await page.getByRole("dialog", { name: "Command palette" }).getByRole("combobox", { name: "Search" }).fill("Open a surface");
-  await page.getByRole("dialog", { name: "Command palette" }).getByRole("button", { name: /Open a surface/ }).click();
-  await expect(page.locator(".launcher")).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Browser" })).toBeFocused();
+  await page.keyboard.press("End");
+  await expect(page.getByRole("tab", { name: "Side chat" })).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Home");
+  await expect(page.getByRole("tab", { name: "Diff" })).toHaveAttribute("aria-selected", "true");
 });
