@@ -37,15 +37,6 @@
   font-size: var(--text-nav);
   line-height: 28px;
 }
-.settings-page .segmented {
-  border-radius: var(--radius-9);
-}
-.settings-page .segmented button {
-  border-radius: var(--radius-7);
-}
-.settings-page .settings-main .btn {
-  border-radius: var(--radius-9);
-}
 .settings-page .settings-main .btn-small {
   height: 30px;
 }

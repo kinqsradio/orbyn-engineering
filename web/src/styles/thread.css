@@ -1850,7 +1850,7 @@ button.detail-row:hover {
   min-height: 26px;
   padding: 0 10px;
   border-color: transparent;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-9);
   background: var(--color-chip);
   color: var(--color-textSoft);
   font-size: var(--text-meta);

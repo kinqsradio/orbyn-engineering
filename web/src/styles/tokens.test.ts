@@ -58,3 +58,20 @@ describe("design tokens", () => {
     expect(reduced).toContain("transition-timing-function: linear !important;");
   });
 });
+
+describe("control radii (Orbyn Components)", () => {
+  const block = (text: string, selector: string) => new RegExp(`(?:^|\\n)${selector.replace(/[.[\]]/g, "\\$&")}\\s*\\{([^}]*)\\}`).exec(text)?.[1] ?? "";
+
+  it("gives buttons 9px, a segmented control 9px and its segments 7px, from the shared styles", () => {
+    expect(block(css["base.css"]!, ".btn")).toContain("border-radius: var(--radius-9)");
+    expect(block(css["pages.css"]!, ".segmented")).toContain("border-radius: var(--radius-9)");
+    expect(block(css["pages.css"]!, ".segmented button")).toContain("border-radius: var(--radius-7)");
+  });
+
+  it("has no settings-only radius override for them", () => {
+    const settings = readFileSync(join(process.cwd(), "src/features/settings/settingsDesign.css"), "utf8");
+    expect(settings).not.toMatch(/\.segmented[^{]*\{[^}]*border-radius/);
+    expect(settings).not.toMatch(/\.btn[^{]*\{[^}]*border-radius/);
+    expect(css["pages.css"]).not.toMatch(/\.settings-(?:main|scope) \.btn\s*\{[^}]*border-radius/);
+  });
+});

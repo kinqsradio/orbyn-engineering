@@ -141,7 +141,6 @@ p.settings-scope {
   min-height: 28px;
   padding: 0 10px;
   border: 0;
-  border-radius: var(--radius-md);
   background: var(--color-sunken);
   font-size: var(--text-nav);
   font-weight: 400;
@@ -151,7 +150,6 @@ p.settings-scope {
   min-height: 30px;
   padding: 0 12px;
   border: 0;
-  border-radius: var(--radius-md);
   background: var(--color-sunken);
   color: var(--color-textSoft);
   font-size: var(--text-nav);
@@ -192,14 +190,14 @@ p.settings-scope {
   display: inline-flex;
   gap: 2px;
   padding: 2px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-9);
   background: var(--color-sunken);
 }
 .segmented button {
   height: 24px;
   padding: 0 10px;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-7);
   background: transparent;
   color: var(--color-muted);
   font-size: var(--text-meta);
