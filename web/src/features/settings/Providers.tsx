@@ -1,4 +1,3 @@
-import { CloudOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/client";
 import type { EngineUpdateOutcome } from "../../generated/EngineUpdateOutcome";
@@ -15,6 +14,7 @@ import { AddProviderDialog, InstanceEditor, useProviderInstances } from "./Provi
 import { ProviderDetail } from "./ProviderDetail";
 import { AcpRegistryPage, HistoryImportPage } from "./ProviderPages";
 import { ProviderListActions, ProviderTable } from "./ProviderTable";
+import { SettingsBanner } from "./SettingsBanner";
 import { followEngineUpdates, UpdateProgressLine } from "./engineUpdates";
 
 const POLL_WHILE_UPDATING_MS = 1500;
@@ -122,8 +122,9 @@ export function ProvidersSection() {
         <p className="field-error" role="alert">{store.error ?? "Settings changed. Reload before saving."} <Button small disabled={store.disabled && !store.conflict} onClick={store.reload}>Reload</Button></p>
       ) : null}
       {offline ? (
-        <p className="banner" role="status"><CloudOff size={14} aria-hidden />You're offline. Versions and sign-ins are from the last check{checkedAt.current !== null ? ` at ${new Date(checkedAt.current).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })}` : ""}.
-          <Button small className="set-back-end" busy={refreshing} onClick={() => void recheck()}>Check again</Button></p>
+        <SettingsBanner actions={<Button small busy={refreshing} onClick={() => void recheck()}>Check again</Button>}>
+          You’re offline. Versions and sign-ins are from the last check{checkedAt.current !== null ? ` at ${new Date(checkedAt.current).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })}` : ""}.
+        </SettingsBanner>
       ) : null}
       {engines.error && !engines.data ? (
         <ErrorState title="Couldn't load providers" failure={engines.error} onRetry={() => void refreshEngines()} />

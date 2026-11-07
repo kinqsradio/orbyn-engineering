@@ -651,3 +651,12 @@
 .set-muted {
   color: var(--color-muted);
 }
+/* A custom model's arrows sit together, then Remove, then its switch (s-x-provider-detail). */
+.set-model-moves {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 2px;
+}
+.setting-line-control:has(> .set-model-moves, > * > .set-model-moves) {
+  gap: 10px;
+}

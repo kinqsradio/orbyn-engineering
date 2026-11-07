@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, ChevronLeft, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, Plus } from "lucide-react";
 import { useState } from "react";
 import { api } from "../../api/client";
 import type { EngineStatus } from "../../api/types";
@@ -11,6 +11,7 @@ import { Button, CopyCommand, IconButton } from "../../ui/controls";
 import { ConfirmDialog, Dialog } from "../../ui/Dialog";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { NativeSessions } from "./NativeSessions";
+import { SettingsBanner } from "./SettingsBanner";
 import { FeedbackAction, hasFeedback, UpdateAction, useCustomModels } from "./ProviderParts";
 import type { InstanceStore } from "./ProviderInstances";
 import { patchInstance } from "./providerInstanceData";
@@ -40,11 +41,15 @@ function Models({ engine }: { engine: EngineStatus }) {
   const [adding, setAdding] = useState(false);
   const models = arrangeModels(engine.id, listed?.models ?? [], [], order);
   const customIds = new Set(custom.mine.map((model) => model.id));
+  // A custom model moves past the next custom model; built-in models keep their place.
+  const customAt = models.flatMap((model, at) => customIds.has(model.id) ? [at] : []);
   const move = (at: number, step: number) => {
+    const target = customAt[customAt.indexOf(at) + step];
+    if (target === undefined) return;
     const keys = models.map((model) => modelKey(engine.id, model.id));
     const [key] = keys.splice(at, 1);
     if (!key) return;
-    keys.splice(at + step, 0, key);
+    keys.splice(target, 0, key);
     setPrefs({ modelOrder: [...order.filter((entry) => !keys.includes(entry)), ...keys] });
   };
   return (
@@ -57,10 +62,14 @@ function Models({ engine }: { engine: EngineStatus }) {
           const shown = !hidden.includes(key);
           return (
             <SettingRow key={model.id} title={model.label}>
-              {customIds.has(model.id) ? <span className="set-pill">Custom</span> : null}
-              <IconButton label={`Move ${model.label} up`} disabled={at === 0} onClick={() => move(at, -1)}><ArrowUp size={14} aria-hidden /></IconButton>
-              <IconButton label={`Move ${model.label} down`} disabled={at === models.length - 1} onClick={() => move(at, 1)}><ArrowDown size={14} aria-hidden /></IconButton>
-              {customIds.has(model.id) ? <IconButton label={`Remove ${model.label}`} disabled={custom.disabled} onClick={() => void custom.remove(model.id)}><Trash2 size={14} aria-hidden /></IconButton> : null}
+              {customIds.has(model.id) ? <>
+                <span className="set-pill">Custom</span>
+                <span className="set-model-moves">
+                  <IconButton label={`Move ${model.label} up`} disabled={at === customAt[0]} onClick={() => move(at, -1)}><ArrowUp size={14} aria-hidden /></IconButton>
+                  <IconButton label={`Move ${model.label} down`} disabled={at === customAt[customAt.length - 1]} onClick={() => move(at, 1)}><ArrowDown size={14} aria-hidden /></IconButton>
+                </span>
+                <button type="button" className="set-red-link" aria-label={`Remove ${model.label}`} disabled={custom.disabled} onClick={() => void custom.remove(model.id)}>Remove</button>
+              </> : null}
               <input type="checkbox" role="switch" aria-label={`Show ${model.label}`} checked={shown}
                 onChange={() => setPrefs({ modelHidden: shown ? [...hidden, key] : hidden.filter((entry) => entry !== key) })} />
             </SettingRow>
@@ -104,7 +113,9 @@ export function ProviderDetail({ engine, store, onBack, onEdit }: {
         <h2 className="set-back-title">{engine.name}</h2>
         {instance ? <Button small className="set-back-end" onClick={onEdit}>Edit</Button> : null}
       </div>
-      {engine.problem ? <p className="banner banner-err" role="alert">{engine.problem}<Button small onClick={() => void recheck()}>Check again</Button></p> : null}
+      {engine.problem ? <SettingsBanner tone="err" actions={<Button small busy={checking} onClick={() => void recheck()}>Check again</Button>}>
+        {engine.path ? `Couldn’t run ${engine.path}. ` : ""}{engine.problem}
+      </SettingsBanner> : null}
       {failure ? <p className="field-error" role="alert">{failure}</p> : null}
       <SettingGroup>
         <SettingRow title="Version" description={engine.version === null ? "Unknown" : hasNewer ? `${engine.version} · ${engine.latest} is available` : engine.version}>

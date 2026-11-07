@@ -24,6 +24,7 @@ import type {
   WorkspaceStatus,
 } from "../src/api/types.ts";
 import * as fixtures from "./fixtures.ts";
+import { instanceEngines, providerInstances } from "./instances.ts";
 import { cleanupPreview, diagnostics } from "./maintenance.ts";
 import { preferenceCatalog, projectPreferenceKeys } from "./preferenceCatalog.ts";
 
@@ -116,7 +117,8 @@ export function createMockApi(options: MockOptions = {}) {
     settings = fixtures.serverSettings();
     failStep = null;
     if (next === "no-skills") managed = fixtures.workspaceStatus([], false);
-    engines = structuredClone(fixtures.engines);
+    engines = structuredClone([...fixtures.engines, ...instanceEngines(fixtures.engines)]);
+    if (!blank) preferenceValues = { ...preferenceValues, provider_instances: structuredClone(providerInstances) };
   }
   reset();
 
@@ -719,7 +721,14 @@ export function createMockApi(options: MockOptions = {}) {
           },
         };
       case "GET /api/engines":
-        if (seg[3] === "models") return { status: 200, body: fixtures.engineModels(seg[2] ?? "") };
+        if (seg[3] === "models") {
+          // The service merges the person's custom models into the list it returns.
+          const listing = fixtures.engineModels(seg[2] ?? "");
+          const custom = (Array.isArray(preferenceValues.custom_models) ? preferenceValues.custom_models : [])
+            .flatMap((entry) => entry && typeof entry === "object" && !Array.isArray(entry) && entry.engine === seg[2] && typeof entry.id === "string"
+              ? [{ id: entry.id, label: typeof entry.label === "string" ? entry.label : entry.id, description: null, is_default: false, custom: true, options: [] }] : []);
+          return { status: 200, body: { ...listing, models: [...listing.models, ...custom] } };
+        }
         return { status: 200, body: engines };
       default:
         break;
