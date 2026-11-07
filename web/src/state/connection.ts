@@ -39,22 +39,38 @@ export function connectionKind(state: Pick<ConnectionStore, "offline" | "service
 export const useConnectionKind = (): ConnectionKind | null => useConnection(connectionKind);
 
 const PROBE_MS = 3000;
+/** A probe that has not answered by now counts as failed, so probes never pile up. */
+const PROBE_TIMEOUT_MS = 2500;
 
 /**
  * Follows the browser's network events, and asks the service whether it is back while it is down.
- * `probe` resolves when the service answers. Returns a stop function.
+ * `probe` resolves when the service answers and should stop when its signal aborts; only one probe
+ * is in flight at a time. Returns a stop function.
  */
-export function watchConnection(probe: () => Promise<unknown>): () => void {
+export function watchConnection(probe: (signal: AbortSignal) => Promise<unknown>): () => void {
   const sync = () => useConnection.getState().setOffline(navigator.onLine === false);
   sync();
   window.addEventListener("online", sync);
   window.addEventListener("offline", sync);
   let timer: ReturnType<typeof setInterval> | undefined;
   let stopped = false;
+  let asking = false;
   const ask = () => {
-    if (stopped) return;
+    if (stopped || asking) return;
     if (!useConnection.getState().serviceDown || useConnection.getState().offline) return;
-    probe().then(markReachable, () => undefined);
+    asking = true;
+    const abort = new AbortController();
+    const cutoff = setTimeout(() => abort.abort(), PROBE_TIMEOUT_MS);
+    // A probe that ignores the signal is also given up on at the cutoff.
+    const gaveUp = new Promise<never>((_, reject) =>
+      abort.signal.addEventListener("abort", () => reject(new Error("The service did not answer.")), { once: true }),
+    );
+    Promise.race([probe(abort.signal), gaveUp])
+      .then(markReachable, () => undefined)
+      .finally(() => {
+        clearTimeout(cutoff);
+        asking = false;
+      });
   };
   const unsubscribe = useConnection.subscribe((state) => {
     if (state.serviceDown && !state.offline && timer === undefined) timer = setInterval(ask, PROBE_MS);

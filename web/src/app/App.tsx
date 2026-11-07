@@ -86,7 +86,7 @@ function BootedApp() {
   }, [ready]);
   useEffect(() => {
     if (!ready) return;
-    return watchConnection(() => api.info());
+    return watchConnection((signal) => api.info(signal));
   }, [ready]);
   useEffect(() => {
     if (!ready) return;

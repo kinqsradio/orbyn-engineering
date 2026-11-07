@@ -17,8 +17,28 @@ it("names offline before anything else, and only blames the service while the ne
 
 it("follows the browser's network events", () => {
   const stop = watchConnection(() => Promise.resolve());
+  const online = vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
   window.dispatchEvent(new Event("offline"));
-  expect(useConnection.getState().offline).toBe(navigator.onLine === false);
+  expect(useConnection.getState().offline).toBe(true);
+  online.mockReturnValue(true);
+  window.dispatchEvent(new Event("online"));
+  expect(useConnection.getState().offline).toBe(false);
+  online.mockRestore();
+  stop();
+});
+
+it("gives up on a probe that never answers, then asks again", async () => {
+  vi.useFakeTimers();
+  const probe = vi.fn(() => new Promise<never>(() => undefined));
+  const stop = watchConnection(probe);
+  markUnreachable();
+  await vi.advanceTimersByTimeAsync(3000);
+  expect(probe).toHaveBeenCalledTimes(1);
+  expect((probe.mock.calls[0] as unknown as [AbortSignal])[0].aborted).toBe(false);
+  await vi.advanceTimersByTimeAsync(3000);
+  expect((probe.mock.calls[0] as unknown as [AbortSignal])[0].aborted).toBe(true);
+  expect(probe).toHaveBeenCalledTimes(2);
+  expect(useConnection.getState().serviceDown).toBe(true);
   stop();
 });
 

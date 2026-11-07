@@ -15,7 +15,9 @@ export function useEscapeClose(active: boolean, onClose: () => void, trigger: ()
     const focusReturn = captureFocusReturn(latest.current.trigger());
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
-      if (document.querySelector("dialog[open], [aria-modal='true'], [data-menu-root], [data-popover-root]")) return;
+      // A menu in its exit fade is already closed: it is inert and marked closing.
+      const live = ":not([data-closing]):not([inert])";
+      if (document.querySelector(`dialog[open], [aria-modal='true'], [data-menu-root]${live}, [data-popover-root]${live}`)) return;
       event.preventDefault();
       moveFocus(focusReturn, "escape");
       latest.current.onClose();
