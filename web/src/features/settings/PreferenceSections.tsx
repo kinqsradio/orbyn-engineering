@@ -1,6 +1,7 @@
-import { Check, ChevronDown, ChevronLeft, RefreshCw, Search } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, CloudOff, RefreshCw, Search } from "lucide-react";
 import { settingsLabel } from "./settingsSearch";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useConnection } from "../../state/connection";
 import { api, request } from "../../api/client";
 import type { ForgeStatus, Thread } from "../../api/types";
 import type { ProjectGroupingMode } from "../../generated/ProjectGroupingMode";
@@ -476,6 +477,9 @@ export function WorktreesSection() {
 
 export function SourceControlSection() {
   const forges = useAsync("forges", (signal) => request<ForgeStatus[]>("GET", "/api/forges", undefined, signal));
+  const offline = useConnection((state) => state.offline);
+  const scannedAt = useRef<number | null>(null);
+  if (forges.status === "ready" && !offline) scannedAt.current = Date.now();
   return (
     <>
       {heading("Source control")}
@@ -486,12 +490,16 @@ export function SourceControlSection() {
       }] }]} />
       <div className="set-hosts-head">
         <b>Hosts</b>
-        <Button small icon={<RefreshCw size={13} aria-hidden />} onClick={forges.reload}>Rescan</Button>
+        <Button small disabled={offline} icon={<RefreshCw size={13} aria-hidden />} onClick={forges.reload}>Rescan</Button>
       </div>
+      {offline ? <p className="banner" role="status"><CloudOff size={14} aria-hidden />You’re offline. Showing the last scan{scannedAt.current ? ` from ${new Date(scannedAt.current).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })}` : ""}. Rescan and sign-in are unavailable.</p> : null}
       {forges.status === "loading" ? (
-        <Loading label="Checking source control" rows={3} />
+        <><span className="sr-only" role="status">Rescanning your remotes…</span><Loading label="Checking source control" rows={3} /></>
       ) : forges.status === "error" ? (
         <ErrorState title="Couldn't check source control" failure={forges.error} onRetry={forges.reload} />
+      ) : forges.data.length === 0 ? (
+        <Empty title="No Git hosts found"><p>Add a project with a remote and they appear here.</p>
+          <Button small disabled={offline} icon={<RefreshCw size={13} aria-hidden />} onClick={forges.reload}>Rescan</Button></Empty>
       ) : (
         <div className="set-tbl" role="table" aria-label="Hosts">
           {forges.data.map((forge) => (
@@ -499,7 +507,8 @@ export function SourceControlSection() {
               <span role="cell"><span className="set-mark">{forge.name.charAt(0).toUpperCase()}</span></span>
               <span role="cell"><span className="name">{forge.name}</span>{forge.problem ?? forge.accounts.join(", ") ? <><br /><span className="sub">{forge.problem ?? forge.accounts.join(", ")}</span></> : null}</span>
               <span role="cell">
-                {forge.signed_in ? <span className="set-pill"><Check size={13} aria-hidden />Signed in</span>
+                {forge.problem && !forge.signed_in ? <span className="set-pill warn">Can’t reach {forge.name}</span>
+                  : forge.signed_in ? <span className="set-pill"><Check size={13} aria-hidden />Signed in</span>
                   : <span className="set-pill">{forge.installed ? "Not signed in" : "Not installed"}</span>}
               </span>
             </div>

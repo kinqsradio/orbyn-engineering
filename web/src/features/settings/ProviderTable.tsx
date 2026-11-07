@@ -53,7 +53,7 @@ function Status({ engine }: { engine: EngineStatus }) {
 const subtitle = (engine: EngineStatus) =>
   engine.tier === "acp" ? "via ACP" : engine.auth === "logged_out" ? "Not signed in" : engine.auth === "logged_in" ? "Signed in" : null;
 
-const COLUMNS = "28px minmax(0, 1fr) 90px 130px 60px 56px";
+const COLUMNS = "28px minmax(0, 1fr) 90px 130px 60px 72px";
 
 /** One row per provider and provider instance. A row opens its detail; Edit and In use belong to instances. */
 export function ProviderTable({ engines, store, onOpen, onEdit }: {

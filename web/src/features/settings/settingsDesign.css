@@ -475,3 +475,12 @@
 @media (max-width: 767px) {
   .tokg { grid-template-columns: 1fr; }
 }
+
+/* The scope bar: two inline selects under the page title. */
+.settings-page .settings-scope-line select {
+  width: auto;
+  max-width: 220px;
+}
+.set-inuse-head {
+  white-space: nowrap;
+}
