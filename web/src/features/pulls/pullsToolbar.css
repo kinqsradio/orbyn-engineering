@@ -402,6 +402,7 @@
 }
 .pulls-scrim[data-closing] {
   opacity: 0;
+  transition: opacity var(--m-base-out) var(--m-io);
 }
 /* The sheet rises over --m-slow with --m-out and leaves over --m-slow-out with --m-io, staying
    mounted until that ends. Reduced motion swaps the slide for a fade over --m-fast. */
@@ -425,10 +426,17 @@
     scale: 1;
   }
 }
+.pulls-sheet[data-drag] {
+  transition: none;
+}
+.pulls-sheet[data-spring] {
+  transition: translate var(--m-base) var(--m-out);
+}
+/* A drag-close sets --sheet-exit to the share of --m-slow-out that is left to travel. */
 .pulls-sheet[data-closing] {
   opacity: 1;
   translate: 0 100%;
-  transition: translate var(--m-slow-out) var(--m-io);
+  transition: translate var(--sheet-exit, var(--m-slow-out)) var(--m-io);
 }
 @media (prefers-reduced-motion: reduce) {
   .pulls-sheet,
