@@ -340,14 +340,16 @@ export async function openDetails(page: Page) {
 }
 
 /**
- * Opens the thread's side panel if it is closed, selects one of its tabs ("Diff", "Files", "Browser", "Activity",
- * "Pull requests", "Side chat") and returns the panel. The panel is closed on a narrower window until the title bar's
- * Show side panel button turns it on.
+ * Opens the thread's side panel if it is closed and, when a tab is named ("Diff", "Files", "Browser", "Activity",
+ * "Pull requests", "Side chat"), selects it. Returns the panel. The panel is closed on a narrower window until the
+ * title bar's Show side panel button turns it on.
  */
-export async function openPanelTab(page: Page, name: string) {
+export async function openPanelTab(page: Page, name?: string) {
   const toggle = page.getByRole("button", { name: "Show side panel", exact: true });
   if ((await toggle.getAttribute("aria-pressed")) !== "true") await toggle.click();
   const panel = page.getByRole("complementary", { name: "Thread context" });
+  await expect(panel).toBeVisible();
+  if (name === undefined) return panel;
   const tab = panel.getByRole("tab", { name, exact: true });
   await expect(tab).toBeVisible();
   if ((await tab.getAttribute("aria-selected")) !== "true") await tab.click();
