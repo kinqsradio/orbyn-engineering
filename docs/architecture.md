@@ -1965,9 +1965,18 @@ it does not inspect, rewrite or merge older development packages' per-port WebKi
 or WebView2 stores. Those stores remain untouched.
 
 The product UI has no accepted native commands or Tauri imports. A separate static
-`orbyn-startup` origin shows startup/failure and Try again. Its only capability is
-`restart_core`, whose handler also rejects callers while the top-level window is not
-on that exact startup origin and path; the product asset origin cannot invoke it.
+`orbyn-startup` origin shows startup/failure with Show log, Try again and Quit. Its
+capability is exactly three commands, none taking an argument from the page:
+`restart_core` (Try again), `show_core_log` (Show log) and `quit_core` (Quit). A failed
+start has no service to ask, so these are the only ways out of it: a person can read why,
+try again or leave without a running service. `show_core_log` reveals only the app's own
+log, resolved in Rust, never a path the page sends; `quit_core` only exits the app. Each
+handler also rejects callers while the top-level window is not on that exact startup
+origin and path, so the product asset origin, preview windows and remote viewers cannot
+invoke any of them. The page gets one short reason line for a failed start, cut to
+a single line with path and address words removed and capped in length, not log text.
+It follows the system light or dark appearance; the app's own theme choice lives in the
+product origin and does not reach this page, and Dim is not offered here.
 There are no default core/plugin command permissions. The startup document is embedded,
 has no frames or external resources, and displays errors as text. Product actions ask
 the service, which asks the shell over stdin/stdout; results return through
@@ -2048,7 +2057,7 @@ loader says it restarted once and stopped again, and waits for Try again, which 
 earns the next crash its one restart. The product UI restarts the service or shows
 its log through the `restart_service` and `show_log` shell actions, which the service
 relays and a remote viewer is refused; the product origin still holds no capability,
-so `restart_core` stays the startup document's alone. Every
+so the three startup commands stay the startup document's alone. Every
 post-spawn startup failure closes the parent pipe and retains child ownership through
 a five-second graceful-exit period, then kills and reaps a service that has not exited.
 Successful readiness transfers that ownership to the running shell.
