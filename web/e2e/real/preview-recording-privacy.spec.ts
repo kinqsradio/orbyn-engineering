@@ -74,6 +74,18 @@ async function badgeBrightness(page: Page, path: string, mouseRing = false): Pro
   }, { base64: jpeg, mouseRing });
 }
 
+// The viewer dispatches input asynchronously. A Playwright press finishing only
+// means its DOM handler ran; recording cues belong to the completed service input.
+async function appliedInput(page: Page, endpoint: string, kind: string, dispatch: () => Promise<void>) {
+  const [response] = await Promise.all([
+    page.waitForResponse((response) => response.request().method() === "POST"
+      && new URL(response.url()).pathname === `${endpoint}/input`
+      && (response.request().postDataJSON() as { kind?: string }).kind === kind),
+    dispatch(),
+  ]);
+  expect(response.ok()).toBe(true);
+}
+
 test("UI recording options sample static pages and opt in to actual click and key pixels", async ({ page }, info) => {
   const thread = await service.api<{ id: string }>("POST", "/api/threads", { project_id: projectId, engine: "codex", title: "Recording options" });
   const base = `/api/threads/${thread.id}`;
@@ -107,10 +119,13 @@ test("UI recording options sample static pages and opt in to actual click and ke
       if (overlays) {
         const box = await picture.boundingBox();
         if (!box) throw new Error("Missing preview image geometry");
-        await picture.click({ position: { x: box.width * 50 / 400, y: box.height * 10 / 200 } });
+        await appliedInput(page, endpoint, "click", () => picture.click({ position: { x: box.width * 50 / 400, y: box.height * 10 / 200 } }));
         await picture.focus();
-        await picture.press("Enter");
+        await appliedInput(page, endpoint, "key", () => picture.press("Enter"));
         await expect.poll(async () => (await service.api<{ title: string }[]>("GET", `${base}/previews`))[0]?.title).toBe("1:1");
+        // Earlier static frames do not prove that either input cue was sampled.
+        const applied = (await readdir(path)).filter((name) => name.endsWith(".jpg")).length;
+        await expect.poll(async () => (await readdir(path)).filter((name) => name.endsWith(".jpg")).length).toBeGreaterThan(applied + 1);
       }
       await expect.poll(async () => (await readdir(path)).filter((name) => name.endsWith(".jpg")).length).toBeGreaterThan(1);
       await page.getByRole("button", { name: "Stop recording", exact: true }).click();
@@ -177,12 +192,12 @@ for (const mode of ["button", "password", "otp", "iframe", "shadow", "body", "cl
       if (!folder) throw new Error("Missing owned recording folder");
       const path = join(artifacts, folder);
       await expect.poll(async () => (await readdir(path)).filter((name) => name.endsWith(".jpg")).length).toBeGreaterThan(0);
-      const before = (await readdir(path)).filter((name) => name.endsWith(".jpg")).length;
       await picture.focus();
-      await picture.press(mode === "button" ? "Enter" : "Backspace");
+      await appliedInput(page, endpoint, "key", () => picture.press(mode === "button" ? "Enter" : "Backspace"));
+      const applied = (await readdir(path)).filter((name) => name.endsWith(".jpg")).length;
       // The page event oracle is independent of pixels and recording metadata.
       await expect.poll(async () => (await service.api<{ title: string }[]>("GET", `${base}/previews`))[0]?.title).toBe("1:1");
-      await expect.poll(async () => (await readdir(path)).filter((name) => name.endsWith(".jpg")).length).toBeGreaterThan(before + 1);
+      await expect.poll(async () => (await readdir(path)).filter((name) => name.endsWith(".jpg")).length).toBeGreaterThan(applied + 1);
       await page.getByRole("button", { name: "Stop recording", exact: true }).click();
       await expect(page.getByRole("textbox", { name: "Recording folder" })).toHaveValue(path);
       const done = { path, ...JSON.parse(await readFile(join(path, "recording.json"), "utf8")) as { frames: number; error: string | null } };
