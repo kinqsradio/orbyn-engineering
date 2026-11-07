@@ -320,7 +320,7 @@
   padding: 8px 9px;
   color: var(--color-muted);
 }
-@media (max-width: 767px) {
+@media (max-width: 599px) {
   .settings-search-menu {
     left: 10px;
     width: calc(100% - 20px);
@@ -463,7 +463,7 @@
   color: var(--color-danger);
   font-size: 11.5px;
 }
-@media (max-width: 767px) {
+@media (max-width: 599px) {
   .tokg { grid-template-columns: 1fr; }
 }
 

@@ -150,7 +150,7 @@
     opacity: 1;
   }
 }
-@media (max-width: 767px) {
+@media (max-width: 599px) {
   .pulls-table {
     padding-inline: 16px;
     --pulls-cols: 18px minmax(0, 1fr) 14px auto;

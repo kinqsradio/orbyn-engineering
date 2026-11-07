@@ -6,7 +6,7 @@ import { compactAge, relativeTime } from "../../lib/format";
 import { useWaited } from "../../lib/motion";
 import { deriveProjectIdentity } from "../../lib/projectIdentity";
 import { toFailure, useAsync } from "../../lib/useAsync";
-import { useMedia } from "../../lib/useMedia";
+import { useLayoutWidth } from "../../lib/useLayout";
 import { navigate, useRoute } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { useVisibleProjects } from "../../state/workspace";
@@ -67,7 +67,7 @@ export function PullsPage() {
   const [merging, setMerging] = useState<PullListEntry | null>(null);
   const pushToast = useUi((state) => state.pushToast);
   const projects = useVisibleProjects();
-  const phone = useMedia("(max-width: 767px)");
+  const phone = useLayoutWidth() === "phone";
   const asked = statesToAsk(filters.states);
   const list = useAsync(`pulls:${[...asked].sort().join("+")}:${submitted}`, (signal) => loadPulls(asked, submitted, signal));
   const all = useMemo(() => list.data?.pulls ?? [], [list.data]);

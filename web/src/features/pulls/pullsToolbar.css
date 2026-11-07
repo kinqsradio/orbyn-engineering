@@ -636,7 +636,7 @@
 }
 
 /* Phone: search first, then the pills in one scrolling row, then the three selectors. */
-@media (max-width: 767px) {
+@media (max-width: 599px) {
   .pulls-tb {
     flex-direction: column;
     align-items: stretch;

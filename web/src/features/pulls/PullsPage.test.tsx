@@ -1,8 +1,9 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { pullsApi } from "../../api/pulls";
 import type { PullList } from "../../api/types";
 import { MOTION } from "../../lib/motion";
+import { setViewportWidth } from "../../test-support";
 import { PullsPage } from "./PullsPage";
 
 let finish!: (list: PullList) => void;
@@ -39,4 +40,13 @@ it("removes the skeleton when the data arrives", async () => {
   expect(skeletonRows()).toHaveLength(6);
   await act(async () => finish({ pulls: [], failed: [] }));
   expect(skeletonRows()).toHaveLength(0);
+});
+
+it("keeps the desktop Filters popover at 700 px; only a phone gets the sheet", () => {
+  setViewportWidth(700);
+  render(<PullsPage />);
+  fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+  expect(screen.getByRole("dialog", { name: "Filters" })).toBeInTheDocument();
+  expect(document.querySelector(".pulls-sheet")).toBeNull();
+  expect(screen.getByRole("combobox", { name: "Search people" })).toBeInTheDocument();
 });

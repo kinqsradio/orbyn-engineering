@@ -75,7 +75,7 @@
 .task-dialog {
   width: min(500px, calc(100vw - 32px));
 }
-@media (max-width: 767px) {
+@media (max-width: 599px) {
   .tasks-page .tasks-body {
     padding-inline: 16px;
   }
