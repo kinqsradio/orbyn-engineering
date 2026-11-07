@@ -2,6 +2,7 @@ import "./platform.css";
 import { AccountCard } from "./AccountCard";
 import { ConnectPlanner } from "./ConnectPlanner";
 import { PairPhone } from "./PairPhone";
+import { PhoneOffline } from "./PhoneOffline";
 import { PhoneView } from "./PhoneView";
 import type { PreviewScreenName } from "./previews";
 import { sampleAccount, sampleConsent, samplePairing, samplePhoneApproval, samplePhoneThreads } from "./sample";
@@ -17,5 +18,7 @@ export default function PreviewScreens({ name }: { name: PreviewScreenName }) {
       return <PairPhone offer={samplePairing} />;
     case "phone":
       return <PhoneView threads={samplePhoneThreads} approval={samplePhoneApproval} />;
+    case "phone-offline":
+      return <PhoneOffline />;
   }
 }

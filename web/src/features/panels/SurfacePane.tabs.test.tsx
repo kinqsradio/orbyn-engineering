@@ -1,7 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { api } from "../../api/client";
 import type { Thread } from "../../api/types";
+import { useConnection } from "../../state/connection";
 import { useUi } from "../../state/ui";
 import { SurfacePane } from "./SurfacePane";
 
@@ -16,6 +18,8 @@ vi.mock("./sideChat", () => ({ openSideChat: vi.fn(), closeSideChat: vi.fn() }))
 const thread = { id: "thread-1" } as Thread;
 
 beforeEach(() => {
+  vi.spyOn(api, "diff").mockResolvedValue([]);
+  useConnection.setState({ offline: false, serviceDown: false });
   useUi.setState({ panelOpen: true, panelTab: null, terminalOpen: false, pullReveal: null });
 });
 
@@ -66,7 +70,7 @@ describe("surface tabs", () => {
     expect(onToggleMaximize).toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Terminal" }));
     expect(useUi.getState().terminalOpen).toBe(true);
-    await user.click(screen.getByRole("button", { name: "Close surfaces" }));
+    await user.click(screen.getByRole("button", { name: "Close side panel" }));
     expect(onReturn).toHaveBeenCalled();
   });
 
@@ -123,5 +127,51 @@ describe("surface tabs", () => {
     screen.getByLabelText("Open a surface").focus();
     await user.keyboard("f");
     expect(screen.getByText("Files content")).toBeInTheDocument();
+  });
+});
+
+describe("connection states in the panel", () => {
+  afterEach(() => useConnection.setState({ offline: false, serviceDown: false }));
+
+  it("marks only the tabs that need the network when offline, and says so over their content", () => {
+    useConnection.setState({ offline: true });
+    useUi.setState({ panelTab: "pulls" });
+    pane();
+    const offline = screen.getAllByRole("tab").filter((tab) => tab.hasAttribute("data-offline"));
+    expect(offline.map((tab) => tab.id)).toEqual(["context-tab-browser", "context-tab-pulls", "context-tab-side"]);
+    expect(screen.getByText("You’re offline.")).toBeInTheDocument();
+  });
+
+  it("says Diff is waiting for the Orbyn service when it does not answer", () => {
+    useConnection.setState({ serviceDown: true });
+    useUi.setState({ panelTab: "diff" });
+    pane();
+    expect(screen.getByText("Waiting for the Orbyn service")).toBeInTheDocument();
+    expect(screen.getByText("The diff comes back when the service does.")).toBeInTheDocument();
+    expect(screen.queryByText("Diff content")).not.toBeInTheDocument();
+  });
+
+  it("names the restore button for the side panel when maximised", () => {
+    pane({ maximized: true });
+    expect(screen.getByRole("button", { name: "Restore side panel" })).toBeInTheDocument();
+  });
+
+  it("folds tabs that don't fit into More, keeping the open tab visible", async () => {
+    const user = userEvent.setup();
+    const width = vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.getAttribute("role") === "tab" ? 50 : 24;
+    });
+    const client = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.getAttribute("role") === "tablist" ? 174 : 0;
+    });
+    useUi.setState({ panelTab: "side" });
+    pane();
+    expect(screen.getAllByRole("tab").map((tab) => tab.id)).toEqual(["context-tab-diff", "context-tab-files", "context-tab-side"]);
+    await user.click(screen.getByRole("button", { name: "More tabs" }));
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Browser", "Activity", "PRs"]);
+    await user.click(screen.getByRole("menuitem", { name: "Browser" }));
+    expect(useUi.getState().panelTab).toBe("browser");
+    width.mockRestore();
+    client.mockRestore();
   });
 });

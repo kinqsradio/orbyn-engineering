@@ -18,6 +18,7 @@ import { useCommand as useSharedCommand } from "../../app/shortcuts";
 import type { EngineStatus, PermissionMode, Thread } from "../../api/types";
 import { useLayoutWidth } from "../../lib/useLayout";
 import { toFailure, useAsync } from "../../lib/useAsync";
+import { useConnectionKind } from "../../state/connection";
 import { useDraftStore } from "../../state/draftStore";
 import { navigate } from "../../state/route";
 import { useThreadLogs } from "./threadLogs";
@@ -223,7 +224,9 @@ export function Composer({
   const overBy = charactersOver(outbound);
   const styled = useMemo(() => (draft && draft.length <= STYLED_CHARS ? composerMarkup(draft) : null), [draft]);
   const fence = openFenceAt(draft, caret);
-  const canSend = outbound !== "" && !sending && !uploading && overBy === 0;
+  // The draft is kept while the Orbyn service does not answer, and sending waits for it.
+  const serviceDown = useConnectionKind() === "service-down";
+  const canSend = outbound !== "" && !sending && !uploading && overBy === 0 && !serviceDown;
   const queue = useAsync(`queue:${thread.id}`, (signal) => api.queue(thread.id, signal));
   const reloadQueue = queue.reload;
   const runId = thread.active_run?.id ?? null;
@@ -886,7 +889,9 @@ export function Composer({
           aria-label={`Message ${thread.title}`}
           aria-describedby="composer-help"
           placeholder={
-            pendingHere.length > 0
+            serviceDown
+              ? "Your draft is kept. Sending waits for the Orbyn service."
+              : pendingHere.length > 0
               ? engine?.capabilities.decline_feedback
                 ? "Type a reply to decline with feedback"
                 : "Send a message to decline and redirect the agent"
@@ -990,7 +995,7 @@ export function Composer({
             <button
               type="submit"
               className="send-btn"
-              aria-label={busy ? "Queue" : "Send"}
+              aria-label={serviceDown ? "Send, unavailable" : busy ? "Queue" : "Send"}
               aria-busy={sending || undefined}
               disabled={!canSend}
             >

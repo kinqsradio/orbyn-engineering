@@ -6,15 +6,17 @@ import {
   GitPullRequest,
   Maximize2,
   MessagesSquare,
-  Minimize2,
+  MoreHorizontal,
   PanelBottom,
+  PanelRight,
   SquareTerminal,
   ArrowLeft,
+  CloudOff,
   X,
   type LucideIcon,
 } from "lucide-react";
 import type { KeyboardEvent } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api } from "../../api/client";
 import type { Thread } from "../../api/types";
 import { useAsync } from "../../lib/useAsync";
@@ -28,7 +30,10 @@ import { FilesPanel } from "./FilesPanel";
 import { LinkedPulls } from "./LinkedPulls";
 import { openSideChat } from "./sideChat";
 import { SideChatPane } from "./SideChatPane";
-import { RIGHT_TABS } from "./tabs";
+import { fitTabs, RIGHT_TABS } from "./tabs";
+import { useConnectionKind } from "../../state/connection";
+import { Menu, type MenuItem } from "../../ui/Menu";
+import { Presence } from "../../ui/Presence";
 
 interface LauncherAction {
   id: ContextTab | "new-side";
@@ -106,39 +111,58 @@ function Launcher({ thread, back }: { thread: Thread; back: RightTab | null }) {
 }
 
 const MIN_PANE = 360;
+/** The More button: a 24px icon button. */
+const MORE_WIDTH = 24;
+const MORE_MENU_WIDTH = 210;
+/** Tabs that need this device's network. Diff, Files, Activity and the terminal keep working offline. */
+const NEEDS_NETWORK: readonly RightTab[] = ["browser", "side", "pulls"];
 const MIN_MAIN = 420;
 
-/** Saves this thread's pane width when the drag ends. */
+/** Saves this thread's pane width when the drag ends. The width shows beside the edge while it moves. */
 export function PaneResizer() {
   const setWidth = useUi((state) => state.setPanelWidth);
+  const [dragging, setDragging] = useState<number | null>(null);
   const clamp = (right: number, x: number) =>
     Math.max(MIN_PANE, Math.min(right - MIN_MAIN, Math.round(right - x)));
   return (
-    <div
-      className="pane-resizer"
-      role="separator"
-      aria-orientation="vertical"
-      aria-label="Resize panel"
-      title="Drag to resize"
-      onDoubleClick={() => setWidth(null)}
-      onPointerDown={(event) => {
-        const pane = event.currentTarget.parentElement;
-        if (!pane) return;
-        event.currentTarget.setPointerCapture(event.pointerId);
-        const right = pane.getBoundingClientRect().right;
-        const handle = event.currentTarget;
-        const move = (moved: PointerEvent) => {
-          pane.style.width = `${clamp(right, moved.clientX)}px`;
-        };
-        const stop = () => {
-          handle.removeEventListener("pointermove", move);
-          handle.removeEventListener("lostpointercapture", stop);
-          setWidth(Math.round(pane.getBoundingClientRect().width));
-        };
-        handle.addEventListener("pointermove", move);
-        handle.addEventListener("lostpointercapture", stop);
-      }}
-    />
+    <>
+      <div
+        className="pane-resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize panel"
+        title="Drag to resize"
+        onDoubleClick={() => setWidth(null)}
+        onPointerDown={(event) => {
+          const pane = event.currentTarget.parentElement;
+          if (!pane) return;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          const right = pane.getBoundingClientRect().right;
+          const handle = event.currentTarget;
+          pane.dataset.resizing = "";
+          setDragging(Math.round(pane.getBoundingClientRect().width));
+          const move = (moved: PointerEvent) => {
+            const next = clamp(right, moved.clientX);
+            pane.style.width = `${next}px`;
+            setDragging(next);
+          };
+          const stop = () => {
+            handle.removeEventListener("pointermove", move);
+            handle.removeEventListener("lostpointercapture", stop);
+            delete pane.dataset.resizing;
+            setDragging(null);
+            setWidth(Math.round(pane.getBoundingClientRect().width));
+          };
+          handle.addEventListener("pointermove", move);
+          handle.addEventListener("lostpointercapture", stop);
+        }}
+      />
+      {dragging === null ? null : (
+        <span className="pane-width" role="status">
+          {dragging} px
+        </span>
+      )}
+    </>
   );
 }
 
@@ -171,23 +195,40 @@ export function SurfacePane({
   const lastTab = useRef<RightTab | null>(null);
   if (tab !== null) lastTab.current = tab;
   const list = useRef<HTMLDivElement>(null);
-  const [overflow, setOverflow] = useState(false);
-  useEffect(() => {
+  const kind = useConnectionKind();
+  // When the row is narrow, the tabs that don't fit fold into More; the open tab always stays.
+  const widths = useRef(new Map<RightTab, number>());
+  const [shown, setShown] = useState<readonly RightTab[]>(() => RIGHT_TABS.map(({ id }) => id));
+  const [moreMenu, setMoreMenu] = useState<{ x: number; y: number } | null>(null);
+  const folded = shown.length < RIGHT_TABS.length;
+  const latest = useRef({ tab, folded });
+  latest.current = { tab, folded };
+  const refit = useCallback(() => {
     const row = list.current;
     if (!row) return;
-    const measure = () => setOverflow(row.scrollWidth - row.clientWidth - row.scrollLeft > 1);
-    measure();
-    row.addEventListener("scroll", measure);
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    observer?.observe(row);
-    return () => {
-      row.removeEventListener("scroll", measure);
-      observer?.disconnect();
-    };
+    for (const element of row.querySelectorAll<HTMLElement>('[role="tab"]')) {
+      const id = element.id.replace("context-tab-", "") as RightTab;
+      if (element.offsetWidth > 0) widths.current.set(id, element.offsetWidth);
+    }
+    // The row is narrower by the More button while it shows.
+    const room = row.clientWidth + (latest.current.folded ? MORE_WIDTH : 0);
+    const next = fitTabs(RIGHT_TABS.map(({ id }) => id), widths.current, room, MORE_WIDTH, latest.current.tab);
+    setShown((current) => (current.length === next.length && current.every((id, i) => id === next[i]) ? current : next));
   }, []);
-  useEffect(() => {
-    list.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
-  }, [tab]);
+  useLayoutEffect(() => {
+    const row = list.current;
+    if (!row) return;
+    refit();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(refit);
+    observer?.observe(row);
+    return () => observer?.disconnect();
+  }, [refit]);
+  useLayoutEffect(refit, [tab, refit]);
+  const hiddenTabs: MenuItem[] = RIGHT_TABS.filter(({ id }) => !shown.includes(id)).map(({ id, text, icon: Icon }) => ({
+    label: text,
+    icon: <Icon size={14} aria-hidden />,
+    onSelect: () => toggle(id),
+  }));
   // One Tab stop: the chosen tab, or the first while none is chosen.
   const stop = tab ?? RIGHT_TABS[0]?.id;
   const onTabKey = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -221,8 +262,8 @@ export function SurfacePane({
             Back to thread
           </Button>
         ) : null}
-        <div ref={list} className="tabs" role="tablist" aria-label="Context" data-overflow={overflow || undefined} onKeyDown={onTabKey}>
-          {RIGHT_TABS.map(({ id, label, text }) => (
+        <div ref={list} className="tabs" role="tablist" aria-label="Context" onKeyDown={onTabKey}>
+          {RIGHT_TABS.filter(({ id }) => shown.includes(id)).map(({ id, label, text }) => (
             <button
               key={id}
               type="button"
@@ -234,6 +275,7 @@ export function SurfacePane({
               tabIndex={stop === id ? 0 : -1}
               aria-controls={tab === id ? `context-${id}` : undefined}
               aria-label={text === label ? undefined : label}
+              data-offline={kind === "offline" && NEEDS_NETWORK.includes(id) ? "" : undefined}
               {...(tab === id ? { "aria-description": "Opens all surfaces", title: "Click again for all surfaces" } : {})}
               onClick={() => {
                 if (tab !== id) toggle(id);
@@ -245,21 +287,58 @@ export function SurfacePane({
           ))}
         </div>
         <div className="layout-toggles end">
+          {folded ? (
+            <IconButton
+              className="tabs-more"
+              label="More tabs"
+              pressed={moreMenu !== null}
+              aria-haspopup="menu"
+              onClick={(event) => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                setMoreMenu(moreMenu ? null : { x: rect.right - MORE_MENU_WIDTH, y: rect.bottom + 4 });
+              }}
+            >
+              <MoreHorizontal size={16} aria-hidden />
+            </IconButton>
+          ) : null}
           {overlay ? null : (
-            <IconButton label={maximized ? "Restore pane" : "Maximize pane"} onClick={onToggleMaximize}>
-              {maximized ? <Minimize2 size={16} aria-hidden /> : <Maximize2 size={16} aria-hidden />}
+            <IconButton label={maximized ? "Restore side panel" : "Maximize pane"} onClick={onToggleMaximize}>
+              {maximized ? <PanelRight size={16} aria-hidden /> : <Maximize2 size={16} aria-hidden />}
             </IconButton>
           )}
           <IconButton label="Terminal" pressed={terminalOpen} onClick={() => toggle("terminal")}>
             <PanelBottom size={16} aria-hidden />
           </IconButton>
-          <IconButton label="Close surfaces" onClick={onReturn}>
+          <IconButton label="Close side panel" onClick={onReturn}>
             <X size={16} aria-hidden />
           </IconButton>
         </div>
       </header>
-      <div className="context-body">
-        {tab === null ? (
+      <Presence>
+        {moreMenu ? (
+          <Menu
+            x={moreMenu.x}
+            y={moreMenu.y}
+            label="Hidden tabs"
+            heading="Hidden tabs"
+            items={hiddenTabs}
+            onClose={() => setMoreMenu(null)}
+          />
+        ) : null}
+      </Presence>
+      <div className="context-body" data-connection={kind ?? undefined}>
+        {kind === "offline" && tab !== null && NEEDS_NETWORK.includes(tab) ? (
+          <p className="conn-banner conn-panel-banner" role="status">
+            <CloudOff size={13} aria-hidden />
+            <span>You’re offline.</span>
+          </p>
+        ) : null}
+        {kind === "service-down" && tab !== null && tab !== "browser" ? (
+          <div className="conn-wait">
+            <b>Waiting for the Orbyn service</b>
+            {tab === "diff" ? <span>The diff comes back when the service does.</span> : null}
+          </div>
+        ) : tab === null ? (
           <Launcher thread={thread} back={lastTab.current} />
         ) : (
           <div id={`context-${tab}`} role="tabpanel" aria-labelledby={`context-tab-${tab}`} className="tabpanel">

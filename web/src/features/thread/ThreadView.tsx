@@ -8,7 +8,6 @@ import {
   Rows3,
   ShieldAlert,
   Target,
-  WifiOff,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
@@ -19,6 +18,7 @@ import type { Project, RunState, Thread } from "../../api/types";
 import { relativeTime, runStateLabels } from "../../lib/format";
 import { useLingering, usePanelMotion, useSettledAfter } from "../../lib/panelAnimations";
 import { isWide, useLayoutWidth } from "../../lib/useLayout";
+import { markReachable, markUnreachable, useConnectionKind } from "../../state/connection";
 import { routeHref } from "../../state/route";
 import { useThreadLogs, useThreadStream } from "./threadLogs";
 import { GitActions } from "./GitControl";
@@ -28,6 +28,7 @@ import { engineById, useWorkspace } from "../../state/workspace";
 import { Button, IconButton, LinkButton } from "../../ui/controls";
 import { Empty, ErrorState, Loading, NarrowBack } from "../../ui/states";
 import { SurfacePane } from "../panels/SurfacePane";
+import { RIGHT_TABS } from "../panels/tabs";
 import { TerminalDrawerBody } from "../panels/TerminalDrawerBody";
 import { threadRunState } from "../workspace/RunState";
 import { RelatedThreads } from "./RelatedThreads";
@@ -38,6 +39,7 @@ import { runningTools } from "./timeline";
 import { implementPrompt, planTitle, proposedPlanIn } from "./proposedPlan";
 import { SubagentBar } from "./SubagentBar";
 import { LimitBanner, ThreadErrorBanner } from "./ThreadBanners";
+import { ConnectionStatus, ServiceDownBanner } from "./ConnectionStatus";
 import { WorktreeSetupCard } from "./WorktreeSetupCard";
 import { ThreadFind } from "./ThreadFind";
 import { Transcript } from "./Transcript";
@@ -67,6 +69,9 @@ function TopBar({
   const branch = thread.worktree?.branch ?? projectBranch;
   const state = threadRunState(thread);
   const narrow = layout === "narrow";
+  const connection = useConnectionKind();
+  const openTab = useUi((state) => state.panelTab);
+  const lastTab = RIGHT_TABS.find(({ id }) => id === openTab);
 
   return (
     <header className="topbar">
@@ -87,7 +92,7 @@ function TopBar({
               {project.name}
             </span>
           ) : null}
-          {thread.active_run && state ? <span className="page-sub-item">{runStateLabels[state]}</span> : null}
+          {connection ? <ConnectionStatus /> : thread.active_run && state ? <span className="page-sub-item">{runStateLabels[state]}</span> : null}
         </span>
       </div>
       <RelatedThreads thread={thread} />
@@ -101,7 +106,12 @@ function TopBar({
             <IconButton label="Terminal" pressed={terminalOpen} onClick={() => togglePanel("terminal")}>
               <PanelBottom size={16} aria-hidden />
             </IconButton>
-            <IconButton label="Surfaces" onClick={onTogglePane}>
+            {lastTab ? (
+              <IconButton label={`Show ${lastTab.label} panel`} onClick={onTogglePane}>
+                <lastTab.icon size={16} aria-hidden />
+              </IconButton>
+            ) : null}
+            <IconButton label="Show side panel" onClick={onTogglePane}>
               <PanelRight size={16} aria-hidden />
             </IconButton>
           </>
@@ -263,17 +273,6 @@ function useProactivePanels(threadId: string, runId: string | null) {
   }, [threadId, runId, changed]);
 }
 
-function StreamBanner({ threadId }: { threadId: string }) {
-  const status = useThreadLogs((state) => state.streams[threadId]?.status);
-  if (status !== "reconnecting") return null;
-  return (
-    <p className="end-line" role="status">
-      <WifiOff size={14} aria-hidden />
-      <span className="end-line-text">Reconnecting. The thread resumes from the last event.</span>
-    </p>
-  );
-}
-
 /** Keeps its socket and scrollback once opened; a phone shows it instead of the thread. */
 function TerminalDrawer({
   threadId,
@@ -365,6 +364,13 @@ export function ThreadView({ id }: { id: string }) {
   );
   const motion = usePanelMotion();
   useThreadStream(id);
+  // The thread's own stream is the app's live signal for the service: it only fails to connect when
+  // the service, or the network under it, does not answer.
+  useEffect(() => {
+    if (stream === "live") markReachable();
+    else if (stream === "reconnecting") markUnreachable();
+  }, [stream]);
+  const connection = useConnectionKind();
   useProactivePanels(id, thread?.active_run?.id ?? null);
   const lastVisit = useVisit(id, thread?.lifecycle?.visited_at ?? null, thread?.updated_at);
 
@@ -447,7 +453,7 @@ export function ThreadView({ id }: { id: string }) {
           onTogglePane={() => setPanelOpen(true)}
         />
         {finding ? <ThreadFind onClose={() => setFinding(false)} /> : null}
-        <div className="thread-stage" hidden={terminalTakesOver} data-hero={hero || undefined}>
+        <div className="thread-stage" hidden={terminalTakesOver} data-hero={hero || undefined} data-connection={connection ?? undefined}>
           {project && !project.trusted ? (
             <p className="banner banner-warn">
               <ShieldAlert size={16} aria-hidden />
@@ -464,7 +470,6 @@ export function ThreadView({ id }: { id: string }) {
               header={<LedgerPin threadId={id} />}
                 footer={
                   <>
-                    <StreamBanner threadId={id} />
                     <GoalLine thread={thread} canPause={engine?.capabilities.goal_control === true} />
                     <RunStatusLine thread={thread} />
                   </>
@@ -474,6 +479,7 @@ export function ThreadView({ id }: { id: string }) {
           <WorktreeSetupCard thread={thread} />
           <ThreadErrorBanner thread={thread} />
           <LimitBanner thread={thread} />
+          <ServiceDownBanner />
           <div className="composer-lane">
             <div ref={mover} className="composer-group">
               <div className="composer-stack">

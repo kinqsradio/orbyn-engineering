@@ -7,7 +7,7 @@ import { lazy } from "react";
  * false in a production build, so the lazy import below is dead code and the chunk is
  * never emitted.
  */
-export const PREVIEW_SCREENS = ["account", "connect-planner", "pair-phone", "phone"] as const;
+export const PREVIEW_SCREENS = ["account", "connect-planner", "pair-phone", "phone", "phone-offline"] as const;
 export type PreviewScreenName = (typeof PREVIEW_SCREENS)[number];
 
 export function previewScreenRoute(hash: string): PreviewScreenName | null {

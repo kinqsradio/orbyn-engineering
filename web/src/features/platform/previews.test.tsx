@@ -9,6 +9,7 @@ const headings: Record<PreviewScreenName, string> = {
   "connect-planner": "Connect Orbyn Planner",
   "pair-phone": "Pair a phone",
   phone: "Threads",
+  "phone-offline": "Threads",
 };
 
 describe("platform preview routes", () => {

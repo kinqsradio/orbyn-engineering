@@ -7,6 +7,7 @@ import { toFailure } from "../lib/useAsync";
 import { useUi, applyTheme } from "../state/ui";
 import { ErrorState, Loading } from "../ui/states";
 import { onShellEvent, Shell } from "./Shell";
+import { watchConnection } from "../state/connection";
 import { upgradeToast } from "../state/healthToasts";
 import { PreviewWindow } from "../features/panels/PreviewWindow";
 import { previewWindowRoute } from "../features/panels/browserPanels";
@@ -82,6 +83,10 @@ function BootedApp() {
     const recheck = () => void api.info().then((info) => adoptEnvironmentTheme(info.environment_theme), () => undefined);
     window.addEventListener("focus", recheck);
     return () => window.removeEventListener("focus", recheck);
+  }, [ready]);
+  useEffect(() => {
+    if (!ready) return;
+    return watchConnection(() => api.info());
   }, [ready]);
   useEffect(() => {
     if (!ready) return;

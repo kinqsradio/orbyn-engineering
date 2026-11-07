@@ -1143,3 +1143,8 @@ input[type="checkbox"][role="switch"]:disabled {
 .project-color-fuchsia { --tint: var(--project-color-fuchsia); }
 .project-color-pink { --tint: var(--project-color-pink); }
 .project-color-rose { --tint: var(--project-color-rose); }
+.menu-heading {
+  padding: 6px 9px 3px;
+  color: var(--color-faint);
+  font-size: var(--text-caption);
+}
