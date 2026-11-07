@@ -235,9 +235,9 @@ export function PullsPage() {
                       <i style={{ width: "55%" }} />
                       <i style={{ width: "30%" }} />
                     </span>
-                    <i className="pull-skel-bar" />
-                    <i className="pull-skel-bar" />
-                    <i className="pull-skel-bar" />
+                    <i className="pull-skel-checks" />
+                    <i className="pull-skel-review" />
+                    <i className="pull-skel-updated" />
                     <span />
                   </li>
                 ))}

@@ -320,7 +320,7 @@
 }
 .pull-skel i {
   display: block;
-  height: 10px;
+  height: 12px;
   border-radius: var(--radius-sm);
   background: var(--color-sunken);
 }
@@ -331,10 +331,17 @@
 .pull-skel-title {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
-.pull-skel .pull-skel-bar {
-  width: 60%;
+/* Bar widths from the internal designs' loading frame (pr-tb-loading). */
+.pull-skel .pull-skel-checks {
+  width: 60px;
+}
+.pull-skel .pull-skel-review {
+  width: 72px;
+}
+.pull-skel .pull-skel-updated {
+  width: 32px;
 }
 /* Shown only after a skeleton: the rows fade in as the skeleton leaves. */
 .pull-rows[data-reveal] {
