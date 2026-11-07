@@ -633,7 +633,8 @@ impl Core {
                         self.pull_details.lock().unwrap().pause(Instant::now());
                         return Ok(paused());
                     }
-                    DetailsOutcome::Unavailable => continue,
+                    // Nothing new; the cached rows below still stand.
+                    DetailsOutcome::Unavailable => {}
                 }
             }
             found.extend(known);

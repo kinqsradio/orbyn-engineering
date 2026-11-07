@@ -594,7 +594,25 @@ fn classify_details(
     let Ok(response) = serde_json::from_str::<Value>(stdout) else {
         return DetailsOutcome::Unavailable;
     };
-    let found = parse_details(&response, project_id, numbers);
+    let mut found = parse_details(&response, project_id, numbers);
+    // An error inside a pull request can null a node of an otherwise complete row, which
+    // would leave a short reviewer list or an undercounted total, so the row goes whole.
+    for error in response
+        .get("errors")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        if let Some([Value::String(root), Value::String(alias), ..]) = error
+            .get("path")
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+            && root == "repository"
+            && let Some(number) = alias.strip_prefix('p').and_then(|n| n.parse().ok())
+        {
+            found.remove(&number);
+        }
+    }
     if found.is_empty() {
         DetailsOutcome::Unavailable
     } else {
@@ -2566,12 +2584,16 @@ mod tests {
     #[test]
     fn errors_beside_data_keep_every_row_that_came_back() {
         let mut response = details_response();
-        response["errors"] = json!([{ "type": "NOT_FOUND", "path": ["repository", "p5"] }]);
+        // p5 is null, and an error inside p4 nulled a node of an otherwise whole row.
+        response["errors"] = json!([
+            { "type": "NOT_FOUND", "path": ["repository", "p5"] },
+            { "type": "FORBIDDEN", "path": ["repository", "p4", "reviewRequests", "nodes", 0, "requestedReviewer"] },
+        ]);
         let outcome = classify_details(false, &response.to_string(), "", "p", &[3, 4, 5]);
         let DetailsOutcome::Details(found) = outcome else {
             panic!("rows with data are kept: {outcome:?}");
         };
-        assert_eq!(found.len(), 2);
+        assert_eq!(found.keys().copied().collect::<Vec<_>>(), [3]);
     }
 
     #[test]
