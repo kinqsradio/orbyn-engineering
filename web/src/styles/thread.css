@@ -4208,6 +4208,13 @@ button.context-meter:hover:not(:disabled) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.branch-create {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .branch-note {
   color: var(--color-muted);
   font-size: var(--text-meta);

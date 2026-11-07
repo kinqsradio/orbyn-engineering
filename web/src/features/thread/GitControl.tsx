@@ -318,7 +318,7 @@ function BranchDialog({ thread, onClose }: { thread: Thread; onClose(): void }) 
           <li>
             <button type="button" data-active={creating || undefined} disabled={busy} onClick={() => void act(api.createBranch(thread.id, name))}>
               <span className="branch-mark"><Plus size={14} aria-hidden /></span>
-              <span className="branch-name">Create branch “{name}”</span>
+              <span className="branch-create">Create branch “{name}”</span>
               {creating ? <span className="branch-note">Enter</span> : null}
             </button>
           </li>
