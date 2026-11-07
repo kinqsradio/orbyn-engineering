@@ -12,7 +12,7 @@ import { navigate, useRoute } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { useVisibleProjects, useWorkspace } from "../../state/workspace";
 import { Button, CopyCommand, Field, IconButton } from "../../ui/controls";
-import { Dialog } from "../../ui/Dialog";
+import { ConfirmDialog, Dialog } from "../../ui/Dialog";
 import { PageBar } from "../../ui/PageBar";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { Empty, ErrorState, Loading } from "../../ui/states";
@@ -418,6 +418,7 @@ function TasksView({ page }: { page: boolean }) {
   const [editing, setEditing] = useState<ScheduledTask | "new" | null>(null);
   const [webhook, setWebhook] = useState<ScheduledTask | null>(null);
   const [deliveries, setDeliveries] = useState<ScheduledTask | null>(null);
+  const [deleting, setDeleting] = useState<ScheduledTask | null>(null);
   const pushToast = useUi((state) => state.pushToast);
   const projects = useVisibleProjects();
   const route = useRoute();
@@ -506,7 +507,7 @@ function TasksView({ page }: { page: boolean }) {
                       <IconButton label={`Edit ${task.name}`} onClick={() => setEditing(task)}>
                         <Pencil size={14} aria-hidden />
                       </IconButton>
-                      <IconButton label={`Delete ${task.name}`} onClick={() => void act(request("DELETE", `/api/tasks/${encodeURIComponent(task.id)}`))}>
+                      <IconButton label={`Delete ${task.name}`} onClick={() => setDeleting(task)}>
                         <Trash2 size={14} aria-hidden />
                       </IconButton>
                     </SettingRow>
@@ -568,7 +569,7 @@ function TasksView({ page }: { page: boolean }) {
                     <IconButton label={`Edit ${task.name}`} onClick={() => setEditing(task)}>
                       <Pencil size={14} aria-hidden />
                     </IconButton>
-                    <IconButton label={`Delete ${task.name}`} onClick={() => void act(request("DELETE", `/api/tasks/${encodeURIComponent(task.id)}`))}>
+                    <IconButton label={`Delete ${task.name}`} onClick={() => setDeleting(task)}>
                       <Trash2 size={14} aria-hidden />
                     </IconButton>
                   </span>
@@ -583,6 +584,21 @@ function TasksView({ page }: { page: boolean }) {
       ) : null}
       {webhook ? <WebhookDialog task={webhook} onClose={() => setWebhook(null)} /> : null}
       {deliveries ? <DeliveriesDialog task={deliveries} onClose={() => setDeliveries(null)} /> : null}
+      {deleting ? (
+        <ConfirmDialog
+          title="Delete scheduled task?"
+          confirmLabel="Delete task"
+          tone="danger"
+          cancelFocus
+          onClose={() => setDeleting(null)}
+          onConfirm={async () => {
+            await request("DELETE", `/api/tasks/${encodeURIComponent(deleting.id)}`);
+            await tasks.reload();
+          }}
+        >
+          Delete {deleting.name}?
+        </ConfirmDialog>
+      ) : null}
     </>
   );
   return page ? <div className="tasks-page">{content}</div> : content;
