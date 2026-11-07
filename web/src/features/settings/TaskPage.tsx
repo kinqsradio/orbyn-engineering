@@ -27,23 +27,26 @@ const OUTCOMES: Record<string, { label: string; tone?: "blue" | "warn" | "bad"; 
   skipped: { label: "Skipped" },
 };
 
-/** The service answers 202 to a request it acted on and 200 to every other it recorded. */
-const DELIVERY_STATES: Record<string, { label: string; tone?: "warn" | "bad" }> = {
+/**
+ * The service answers 202 to a request it acted on and 200 to every other it recorded. Only Failed
+ * uses the failed mark; each outcome says in a tooltip what it means.
+ */
+const DELIVERY_STATES: Record<string, { label: string; meaning?: string; tone?: "bad" }> = {
   accepted: { label: "Accepted" },
-  bad_signature: { label: "Bad signature", tone: "bad" },
-  filtered: { label: "Filtered out", tone: "warn" },
-  duplicate: { label: "Duplicate", tone: "warn" },
-  stale: { label: "Too old", tone: "warn" },
-  disabled: { label: "Task paused", tone: "warn" },
-  failed: { label: "Failed", tone: "bad" },
+  bad_signature: { label: "Bad signature", meaning: "The signature didn’t match. Nothing ran." },
+  filtered: { label: "Filtered out", meaning: "The event didn’t match this task’s filter. Nothing ran." },
+  duplicate: { label: "Duplicate", meaning: "Already received. Nothing ran twice." },
+  stale: { label: "Stale", meaning: "Too old to run. Nothing ran." },
+  disabled: { label: "Disabled", meaning: "The task or its webhook is off. Nothing ran." },
+  failed: { label: "Failed", meaning: "Accepted, but the run failed.", tone: "bad" },
 };
 
 const SENDER_LIMIT = 80;
 const RUN_COLUMNS = "minmax(0, 1fr) 100px 250px 120px";
 const DELIVERY_COLUMNS = "minmax(0, 1fr) 300px 110px 100px";
 
-function Pill({ tone, children }: { tone?: "blue" | "warn" | "bad"; children: React.ReactNode }) {
-  return <span className={tone ? `set-pill ${tone}` : "set-pill"}>{children}</span>;
+function Pill({ tone, title, children }: { tone?: "blue" | "warn" | "bad"; title?: string; children: React.ReactNode }) {
+  return <span className={tone ? `set-pill ${tone}` : "set-pill"} title={title}>{children}</span>;
 }
 
 function RunRow({ run, now }: { run: TaskRun; now: number }) {
@@ -104,7 +107,7 @@ function DeliveryRow({ delivery }: { delivery: WebhookDelivery }) {
       <span role="cell">{dayStamp(delivery.received_at)}</span>
       <span role="cell">{delivery.from ? <span className="t3" title="As reported by the sender">{senderLine(delivery.from)}</span> : null}</span>
       <span role="cell">
-        <Pill tone={state.tone}>{accepted ? <Check size={13} aria-hidden /> : null}{accepted ? "202" : "200"} {state.label}</Pill>
+        <Pill tone={state.tone} title={state.meaning}>{accepted ? <Check size={13} aria-hidden /> : null}{accepted ? "202" : "200"} {state.label}</Pill>
       </span>
       <span role="cell">
         {delivery.thread_id ? <Button small tone="quiet" onClick={() => navigate({ name: "thread", id: delivery.thread_id ?? "" })}>Open thread</Button> : null}
@@ -114,6 +117,7 @@ function DeliveryRow({ delivery }: { delivery: WebhookDelivery }) {
 }
 
 function Deliveries({ task }: { task: ScheduledTask }) {
+  const address = useAsync(`webhook:${task.id}`, (signal) => api.taskWebhook(task.id, signal));
   const deliveries = useAsync(`deliveries:${task.id}`, (signal) => api.taskDeliveries(task.id, signal));
   if (deliveries.status === "loading") return <Loading label="Loading deliveries" rows={3} />;
   if (deliveries.status === "error") {
@@ -122,7 +126,10 @@ function Deliveries({ task }: { task: ScheduledTask }) {
         <Button small className="set-back-end" icon={<RefreshCw size={13} aria-hidden />} onClick={deliveries.reload}>Retry</Button></p>
     );
   }
-  if (deliveries.data.length === 0) return <Empty title="No deliveries yet."><p>When a service calls the address, each call shows here.</p></Empty>;
+  if (deliveries.data.length === 0) {
+    const none = task.schedule.kind !== "webhook" || (address.status === "ready" && !address.data.configured);
+    return <Empty title="No deliveries yet."><p>{none ? "Create an address to receive them." : "When a service calls the address, each call shows here."}</p></Empty>;
+  }
   return (
     <div className="set-tbl" role="table" aria-label="Deliveries">
       <div role="row" className="set-tr h" style={{ gridTemplateColumns: DELIVERY_COLUMNS }}>
@@ -201,10 +208,11 @@ export function TaskPage({ task, onBack, onChanged, onEdit }: { task: ScheduledT
   const [running, setRunning] = useState(false);
   const [tab, setTab] = useState<Tab>("runs");
   const hook = task.schedule.kind === "webhook";
-  const tabs: { id: Tab; label: string }[] = hook ? [{ id: "runs", label: "Runs" }, { id: "deliveries", label: "Webhook deliveries" }] : [{ id: "runs", label: "Runs" }];
+  const tabs: { id: Tab; label: string }[] = [{ id: "runs", label: "Runs" }, { id: "deliveries", label: "Webhook deliveries" }];
+  const [runsVersion, setRunsVersion] = useState(0);
   const run = () => {
     setRunning(true);
-    api.runTask(task.id).then(onChanged, (failure: unknown) => pushToast(`Couldn't do that. ${toFailure(failure).message}`)).finally(() => setRunning(false));
+    api.runTask(task.id).then(() => { onChanged(); setRunsVersion((version) => version + 1); }, (failure: unknown) => pushToast(`Couldn't do that. ${toFailure(failure).message}`)).finally(() => setRunning(false));
   };
   const project = projects?.find((entry) => entry.id === task.project_id)?.name;
   const next = task.enabled && task.next_run_at ? weekdayDate(task.next_run_at) : "";
@@ -232,7 +240,7 @@ export function TaskPage({ task, onBack, onChanged, onEdit }: { task: ScheduledT
         ))}
       </div>
       <div role="tabpanel" id={`task-panel-${tab}`} aria-labelledby={`task-tab-${tab}`}>
-        {tab === "runs" ? <Runs task={task} /> : <Deliveries task={task} />}
+        {tab === "runs" ? <Runs key={runsVersion} task={task} /> : <Deliveries task={task} />}
       </div>
     </>
   );

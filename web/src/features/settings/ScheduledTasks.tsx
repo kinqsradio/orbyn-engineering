@@ -1,7 +1,7 @@
 import { chooseDraftEngine } from "../onboarding/draftEngine";
 import { AlertTriangle, Check, CloudOff, Plus, RefreshCw, X } from "lucide-react";
 import "./ScheduledTasks.css";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { NETWORK_ERROR, request } from "../../api/client";
 import type { ScheduledTask, WebhookFilter } from "../../api/types";
 import { toFailure, useAsync } from "../../lib/useAsync";
@@ -379,8 +379,6 @@ function TasksView({ page }: { page: boolean }) {
   const route = useRoute();
   const linkedId = route.name === "settings" ? route.task : undefined;
   const [openedLink, setOpenedLink] = useState<string | undefined>(undefined);
-  const editingRef = useRef(editing);
-  editingRef.current = editing;
 
   useEffect(() => {
     if (linkedId === undefined) {
@@ -391,13 +389,14 @@ function TasksView({ page }: { page: boolean }) {
     setOpenedLink(linkedId);
     const task = tasks.data.find((entry) => entry.id === linkedId);
     if (!task) navigate({ name: "settings", section: "tasks" });
-    else if (editingRef.current === null) setEditing(task);
+    else {
+      // The link opens the task's page, on its Runs tab; the editor opens only from Edit.
+      setOpened(task.id);
+      navigate({ name: "settings", section: "tasks" });
+    }
   }, [linkedId, openedLink, tasks.status, tasks.data]);
 
-  const closeEditor = () => {
-    setEditing(null);
-    if (linkedId !== undefined) navigate({ name: "settings", section: "tasks" });
-  };
+  const closeEditor = () => setEditing(null);
 
   const act = (work: Promise<unknown>) =>
     work.then(tasks.reload, (failure: unknown) => pushToast(`Couldn't do that. ${toFailure(failure).message}`));

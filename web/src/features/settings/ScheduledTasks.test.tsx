@@ -1,11 +1,13 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import * as fixtures from "../../../mock/fixtures";
 import { api } from "../../api/client";
 import { useWorkspace } from "../../state/workspace";
 import { installMockFetch } from "../../test-support";
 import { ScheduledTasksSection } from "./ScheduledTasks";
+
+afterEach(() => { vi.restoreAllMocks(); });
 
 function ready() {
   useWorkspace.setState({
@@ -14,19 +16,18 @@ function ready() {
   });
 }
 
-it("opens the linked task and clears the link when the editor closes", async () => {
+it("opens the linked task's page on its Runs tab, and the editor only from Edit", async () => {
   ready();
   window.location.hash = "#/settings/tasks?task=task-review";
   installMockFetch();
   const user = userEvent.setup();
   render(<ScheduledTasksSection />);
 
-  expect(await screen.findByRole("dialog", { name: "Edit scheduled task" })).toBeVisible();
-  expect(screen.getByDisplayValue("Daily review")).toBeVisible();
-
-  await user.click(screen.getByRole("button", { name: "Cancel" }));
-  await waitFor(() => expect(window.location.hash).toBe("#/settings/tasks"));
+  expect(await screen.findByRole("heading", { name: "Daily review" })).toBeVisible();
+  expect(screen.getByRole("tab", { name: "Runs", selected: true })).toBeVisible();
   expect(screen.queryByRole("dialog", { name: "Edit scheduled task" })).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Edit" }));
+  expect(await screen.findByRole("dialog", { name: "Edit scheduled task" })).toBeVisible();
 });
 
 it("drops a link to a task that no longer exists without opening an editor", async () => {
@@ -73,6 +74,7 @@ it("puts Name first, typed by the person, and refuses to save without one", asyn
   installMockFetch();
   const user = userEvent.setup();
   render(<ScheduledTasksSection />);
+  await user.click(await screen.findByRole("button", { name: "Edit" }));
   const dialog = await screen.findByRole("dialog", { name: "Edit scheduled task" });
   const name = within(dialog).getByRole("textbox", { name: "Name" });
   expect(dialog.querySelector("input, textarea, select")).toBe(name);
@@ -127,6 +129,39 @@ it("shows who sent each delivery as the sender's own claim, cut at 80 characters
   const rows = within(table).getAllByRole("row");
   expect(within(rows[4] as HTMLElement).getAllByRole("cell")[1]).toBeEmptyDOMElement();
   expect(screen.queryByText("From", { exact: true })).toBeNull();
+});
+
+it("answers a delivery as 202 Accepted or 200 with one of six outcomes, each explained, and only Failed in the failed style", async () => {
+  const delivery = (id: string, status: string) => ({ id, task_id: "task-hook", status, received_at: "2026-10-30T10:00:00Z", headers: {}, body: "{}", prompt: null, thread_id: null });
+  vi.spyOn(api, "taskDeliveries").mockResolvedValue(["accepted", "bad_signature", "filtered", "duplicate", "stale", "disabled", "failed"].map((status, at) => delivery(`d${at}`, status)));
+  const user = await openIncomingHook();
+  await user.click(screen.getByRole("tab", { name: "Webhook deliveries" }));
+  const table = await screen.findByRole("table", { name: "Deliveries" });
+  const answers = ["202 Accepted", "200 Bad signature", "200 Filtered out", "200 Duplicate", "200 Stale", "200 Disabled", "200 Failed"];
+  expect(answers.map((text) => within(table).getByText(text).textContent)).toEqual(answers);
+  expect(within(table).getByText("200 Bad signature")).toHaveAttribute("title", "The signature didn’t match. Nothing ran.");
+  expect(within(table).getByText("200 Stale")).toHaveAttribute("title", "Too old to run. Nothing ran.");
+  expect(within(table).getByText("200 Failed")).toHaveAttribute("title", "Accepted, but the run failed.");
+  expect(within(table).getByText("200 Failed")).toHaveClass("bad");
+  expect(within(table).getByText("200 Bad signature")).not.toHaveClass("bad");
+});
+
+it("with no address yet, the deliveries tab says there are none and how to get some", async () => {
+  vi.spyOn(api, "taskWebhook").mockResolvedValue({ configured: false, path_prefix: "/hooks/task-hook/" });
+  vi.spyOn(api, "taskDeliveries").mockResolvedValue([]);
+  const user = await openIncomingHook();
+  await user.click(screen.getByRole("tab", { name: "Webhook deliveries" }));
+  expect(await screen.findByText("No deliveries yet.")).toBeVisible();
+  expect(await screen.findByText("Create an address to receive them.")).toBeVisible();
+});
+
+it("Run now reloads the Runs tab as well as the task list", async () => {
+  const runs = vi.spyOn(api, "taskRuns").mockResolvedValue([]);
+  vi.spyOn(api, "runTask").mockResolvedValue(undefined as never);
+  const user = await openIncomingHook();
+  await waitFor(() => expect(runs).toHaveBeenCalledTimes(1));
+  await user.click(screen.getByRole("button", { name: "Run now" }));
+  await waitFor(() => expect(runs).toHaveBeenCalledTimes(2));
 });
 
 it("shows the stored webhook address as configured, and the full address with Copy only right after it is regenerated", async () => {
