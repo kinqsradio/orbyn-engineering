@@ -1,21 +1,22 @@
 import { serviceUrl } from "../../api/origin";
 import { chooseDraftEngine } from "../onboarding/draftEngine";
-import { Check, Pencil, Play, Plus, ScrollText, Trash2, Webhook, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronLeft, CloudOff, Play, Plus, RefreshCw, X } from "lucide-react";
 import "./ScheduledTasks.css";
 import { useEffect, useRef, useState } from "react";
-import { request } from "../../api/client";
+import { NETWORK_ERROR, request } from "../../api/client";
 import type { ScheduledTask, WebhookDelivery, WebhookEndpoint, WebhookFilter } from "../../api/types";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { relativeTime } from "../../lib/format";
 import { scheduleLabel, taskTone, WEEKDAYS } from "../../lib/taskSchedule";
+import { useConnection } from "../../state/connection";
 import { navigate, useRoute } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { useVisibleProjects, useWorkspace } from "../../state/workspace";
 import { Button, CopyCommand, Field, IconButton } from "../../ui/controls";
-import { Dialog } from "../../ui/Dialog";
+import { ConfirmDialog, Dialog } from "../../ui/Dialog";
 import { PageBar } from "../../ui/PageBar";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
-import { Empty, ErrorState, Loading } from "../../ui/states";
+import { Empty, Loading } from "../../ui/states";
 
 const listTasks = (signal?: AbortSignal) => request<ScheduledTask[]>("GET", "/api/tasks", undefined, signal);
 
@@ -147,6 +148,7 @@ function WebhookFields({
 
 /** Adds a task, or edits one. What this form doesn't show goes back as it came. */
 function TaskDialog({ task, onClose, onSaved }: { task: ScheduledTask | null; onClose(): void; onSaved(): void }) {
+  const [deleting, setDeleting] = useState(false);
   const projects = useVisibleProjects() ?? [];
   const engines = useWorkspace((state) => state.engines.data) ?? [];
   const [name, setName] = useState(task?.name ?? "");
@@ -219,16 +221,17 @@ function TaskDialog({ task, onClose, onSaved }: { task: ScheduledTask | null; on
       onClose={onClose}
       footer={
         <>
+          {task ? <Button tone="quiet" className="task-delete" onClick={() => setDeleting(true)}>Delete task…</Button> : null}
           <Button tone="quiet" onClick={onClose}>
             Cancel
           </Button>
           <Button tone="primary" disabled={!name.trim() || !prompt.trim() || !project || (kind === "after_thread" && !after)} onClick={() => void save()}>
-            Save task
+            {task ? "Save changes" : "Save task"}
           </Button>
         </>
       }
     >
-      <Field label="Prompt" hint="What the agent should do each time it runs.">
+      <Field label="What should the agent do?">
         {(props) => <textarea {...props} rows={3} value={prompt} onChange={(event) => setPrompt(event.target.value)} />}
       </Field>
       <Field label="Project">
@@ -308,77 +311,77 @@ function TaskDialog({ task, onClose, onSaved }: { task: ScheduledTask | null; on
           {error}
         </p>
       ) : null}
-    </Dialog>
-  );
-}
-
-/** The address is shown once, when it's issued. A new one ends the old. */
-function WebhookDialog({ task, onClose }: { task: ScheduledTask; onClose(): void }) {
-  const [endpoint, setEndpoint] = useState<WebhookEndpoint | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const issue = () => {
-    setError(null);
-    request<WebhookEndpoint>("POST", `/api/tasks/${q(task.id)}/webhook`).then(setEndpoint, (failure: unknown) =>
-      setError(toFailure(failure).message),
-    );
-  };
-  const url = endpoint ? new URL(serviceUrl(endpoint.path), window.location.href).href : null;
-  return (
-    <Dialog title="Webhook address" onClose={onClose} footer={<Button onClick={onClose}>Close</Button>}>
-      {url ? (
-        <CopyCommand command={url} label="Copy webhook address" />
-      ) : (
-        <p>Issuing an address ends the one before it. It works wherever this computer can be reached.</p>
-      )}
-      <Button small onClick={issue}>
-        {url ? "Issue another" : "Issue address"}
-      </Button>
-      {error ? (
-        <p className="field-error" role="alert">
-          {error}
-        </p>
+      {deleting && task ? (
+        <ConfirmDialog title={`Delete ${task.name}?`} confirmLabel="Delete task" tone="danger" onClose={() => setDeleting(false)}
+          onConfirm={async () => { await request("DELETE", `/api/tasks/${q(task.id)}`); onSaved(); onClose(); }}>
+          <p>The task stops running. Threads it already started stay.</p>
+        </ConfirmDialog>
       ) : null}
     </Dialog>
   );
 }
 
-function DeliveriesDialog({ task, onClose }: { task: ScheduledTask; onClose(): void }) {
-  const list = useAsync(`deliveries:${task.id}`, (signal) =>
-    request<WebhookDelivery[]>("GET", `/api/tasks/${q(task.id)}/deliveries`, undefined, signal),
+/** The address is shown once, when it's issued. A new one ends the old. */
+/** One task: Run now, and for a webhook task its address and the deliveries that arrived. */
+function TaskPage({ task, onBack, onChanged }: { task: ScheduledTask; onBack(): void; onChanged(): void }) {
+  const offline = useConnection((state) => state.offline);
+  const pushToast = useUi((state) => state.pushToast);
+  const [endpoint, setEndpoint] = useState<WebhookEndpoint | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+  const hook = task.schedule.kind === "webhook";
+  const deliveries = useAsync(`deliveries:${task.id}`, (signal) =>
+    hook ? request<WebhookDelivery[]>("GET", `/api/tasks/${q(task.id)}/deliveries`, undefined, signal) : Promise.resolve([] as WebhookDelivery[]),
   );
+  const regenerate = () => {
+    setError(null);
+    request<WebhookEndpoint>("POST", `/api/tasks/${q(task.id)}/webhook`).then(setEndpoint, (failure: unknown) => setError(toFailure(failure).message));
+  };
+  const url = endpoint ? new URL(serviceUrl(endpoint.path), window.location.href).href : null;
+  const run = () => {
+    setRunning(true);
+    request("POST", `/api/tasks/${q(task.id)}/run`).then(onChanged, (failure: unknown) => pushToast(`Couldn't do that. ${toFailure(failure).message}`)).finally(() => setRunning(false));
+  };
   return (
-    <Dialog title={`Deliveries for ${task.name}`} onClose={onClose} footer={<Button onClick={onClose}>Close</Button>}>
-      {list.status === "loading" ? (
-        <Loading label="Loading deliveries" rows={3} />
-      ) : list.status === "error" ? (
-        <ErrorState compact title="Couldn't load deliveries" failure={list.error} onRetry={list.reload} />
-      ) : list.data.length === 0 ? (
-        <Empty title="No deliveries yet" />
-      ) : (
-        <ul className="task-deliveries" aria-label="Deliveries">
-          {list.data.map((delivery) => (
-            <li key={delivery.id}>
-              <details>
-                <summary>
-                  <span>{DELIVERY_STATES[delivery.status] ?? delivery.status}</span>
-                  <time>{new Date(delivery.received_at).toLocaleString()}</time>
-                </summary>
-                <h4>Headers</h4>
-                <pre tabIndex={0}>{JSON.stringify(delivery.headers, null, 2)}</pre>
-                <h4>Body</h4>
-                <pre tabIndex={0}>{delivery.body}</pre>
-                {delivery.prompt ? (
-                  <>
-                    <h4>Prompt</h4>
-                    <pre tabIndex={0}>{delivery.prompt}</pre>
-                  </>
-                ) : null}
-              </details>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Dialog>
+    <>
+      <div className="set-back">
+        <Button small tone="quiet" icon={<ChevronLeft size={13} aria-hidden />} onClick={onBack}>Scheduled tasks</Button>
+        <h2 className="set-back-title">{task.name}</h2>
+        <Button small tone="primary" className="set-back-end" busy={running} disabled={offline} icon={<Play size={13} aria-hidden />} onClick={run}>Run now</Button>
+      </div>
+      {offline ? <p className="banner" role="status"><CloudOff size={14} aria-hidden />You're offline. Run now is unavailable.</p> : null}
+      {hook ? (
+        <>
+          <SettingGroup>
+            <SettingRow title="Webhook address" description="Anyone with this address can start the task. Keep it private.">
+              {url ? <CopyCommand command={url} label="Copy webhook address" /> : null}
+              <Button small disabled={offline} onClick={regenerate}>Regenerate</Button>
+            </SettingRow>
+          </SettingGroup>
+          {error ? <p className="field-error" role="alert">{error}</p> : null}
+          <p className="set-grp">Deliveries</p>
+          {deliveries.status === "loading" ? (
+            <Loading label="Loading deliveries" rows={3} />
+          ) : deliveries.status === "error" ? (
+            <p className="banner banner-err" role="alert"><AlertTriangle size={14} aria-hidden />Couldn't load deliveries.
+              <Button small className="set-back-end" icon={<RefreshCw size={13} aria-hidden />} onClick={deliveries.reload}>Retry</Button></p>
+          ) : deliveries.data.length === 0 ? (
+            <Empty title="No deliveries yet"><p>When a service calls the address, each call shows here.</p></Empty>
+          ) : (
+            <div className="set-tbl" role="table" aria-label="Deliveries">
+              <div className="set-tr h" style={{ gridTemplateColumns: "minmax(0, 1fr) 150px 110px" }}><span>Received</span><span>Answer</span><span /></div>
+              {deliveries.data.map((delivery) => (
+                <div key={delivery.id} role="row" className="set-tr" style={{ gridTemplateColumns: "minmax(0, 1fr) 150px 110px" }}>
+                  <span>{new Date(delivery.received_at).toLocaleString()}</span>
+                  <span><span className={delivery.status === "accepted" ? "set-pill" : delivery.status === "failed" || delivery.status === "bad_signature" ? "set-pill bad" : "set-pill warn"}>{DELIVERY_STATES[delivery.status] ?? delivery.status}</span></span>
+                  <span>{delivery.thread_id ? <Button small tone="quiet" onClick={() => navigate({ name: "thread", id: delivery.thread_id ?? "" })}>Open thread</Button> : null}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      ) : null}
+    </>
   );
 }
 
@@ -416,8 +419,8 @@ function LastRun({ task }: { task: ScheduledTask }) {
 function TasksView({ page }: { page: boolean }) {
   const tasks = useAsync("tasks", listTasks);
   const [editing, setEditing] = useState<ScheduledTask | "new" | null>(null);
-  const [webhook, setWebhook] = useState<ScheduledTask | null>(null);
-  const [deliveries, setDeliveries] = useState<ScheduledTask | null>(null);
+  const [opened, setOpened] = useState<string | null>(null);
+  const offline = useConnection((state) => state.offline);
   const pushToast = useUi((state) => state.pushToast);
   const projects = useVisibleProjects();
   const route = useRoute();
@@ -446,11 +449,14 @@ function TasksView({ page }: { page: boolean }) {
   const act = (work: Promise<unknown>) =>
     work.then(tasks.reload, (failure: unknown) => pushToast(`Couldn't do that. ${toFailure(failure).message}`));
   const newTask = (
-    <Button small tone={page ? "primary" : "secondary"} icon={page ? <Plus size={14} aria-hidden /> : undefined} onClick={() => setEditing("new")}>
+    <Button small tone="primary" disabled={offline} icon={<Plus size={14} aria-hidden />} onClick={() => setEditing("new")}>
       New task
     </Button>
   );
-  const content = (
+  const openTask = opened === null ? undefined : tasks.data?.find((entry) => entry.id === opened);
+  const content = openTask ? (
+    <TaskPage task={openTask} onBack={() => setOpened(null)} onChanged={tasks.reload} />
+  ) : (
     <>
       {page ? (
         <PageBar actions={newTask}>
@@ -467,51 +473,18 @@ function TasksView({ page }: { page: boolean }) {
         </div>
       )}
       <div className="tasks-body">
+        {offline ? <p className="banner" role="status"><CloudOff size={14} aria-hidden />You're offline. New task is unavailable.</p> : null}
         {tasks.status === "loading" ? (
           <Loading label="Loading tasks" rows={3} />
         ) : tasks.status === "error" ? (
-          <ErrorState title="Couldn't load tasks" failure={tasks.error} onRetry={tasks.reload} />
+          <p className="banner banner-err" role="alert"><AlertTriangle size={14} aria-hidden />
+            {tasks.error.code === NETWORK_ERROR ? "Couldn't load your tasks. orbynd stopped answering. Your tasks are saved." : `Couldn't load your tasks. ${tasks.error.message}`}
+            <Button small className="set-back-end" icon={<RefreshCw size={13} aria-hidden />} onClick={tasks.reload}>Retry</Button></p>
         ) : tasks.data.length === 0 ? (
-          <Empty title="No scheduled tasks" />
-        ) : !page ? (
-                <SettingGroup title="Tasks">
-                  {tasks.data.map((task) => (
-                    <SettingRow
-                      key={task.id}
-                      title={task.name}
-                      description={task.next_run_at ? `Next run ${new Date(task.next_run_at).toLocaleString()}` : task.last_status}
-                    >
-                      <input
-                        type="checkbox"
-                        role="switch"
-                        aria-label={`Enable ${task.name}`}
-                        checked={task.enabled}
-                        onChange={(event) =>
-                          void act(request("POST", `/api/tasks/${encodeURIComponent(task.id)}/enabled`, { enabled: event.target.checked }))
-                        }
-                      />
-                      <IconButton label={`Run ${task.name}`} onClick={() => void act(request("POST", `/api/tasks/${encodeURIComponent(task.id)}/run`))}>
-                        <Play size={14} aria-hidden />
-                      </IconButton>
-                      {task.schedule.kind === "webhook" ? (
-                        <>
-                          <IconButton label={`Webhook address for ${task.name}`} onClick={() => setWebhook(task)}>
-                            <Webhook size={14} aria-hidden />
-                          </IconButton>
-                          <IconButton label={`Deliveries for ${task.name}`} onClick={() => setDeliveries(task)}>
-                            <ScrollText size={14} aria-hidden />
-                          </IconButton>
-                        </>
-                      ) : null}
-                      <IconButton label={`Edit ${task.name}`} onClick={() => setEditing(task)}>
-                        <Pencil size={14} aria-hidden />
-                      </IconButton>
-                      <IconButton label={`Delete ${task.name}`} onClick={() => void act(request("DELETE", `/api/tasks/${encodeURIComponent(task.id)}`))}>
-                        <Trash2 size={14} aria-hidden />
-                      </IconButton>
-                    </SettingRow>
-                  ))}
-                </SettingGroup>
+          <Empty title="No scheduled tasks">
+            <p>Run a prompt on a schedule: dependency updates, issue triage, a weekly audit.</p>
+            <Button tone="primary" small disabled={offline} icon={<Plus size={14} aria-hidden />} onClick={() => setEditing("new")}>New task</Button>
+          </Empty>
         ) : (
           <div className="task-table" role="table" aria-label="Tasks">
             <div className="task-row task-head" role="row">
@@ -552,25 +525,8 @@ function TasksView({ page }: { page: boolean }) {
                     />
                   </span>
                   <span role="cell" className="task-actions">
-                    <IconButton label={`Run ${task.name}`} onClick={() => void act(request("POST", `/api/tasks/${encodeURIComponent(task.id)}/run`))}>
-                      <Play size={14} aria-hidden />
-                    </IconButton>
-                    {task.schedule.kind === "webhook" ? (
-                      <>
-                        <IconButton label={`Webhook address for ${task.name}`} onClick={() => setWebhook(task)}>
-                          <Webhook size={14} aria-hidden />
-                        </IconButton>
-                        <IconButton label={`Deliveries for ${task.name}`} onClick={() => setDeliveries(task)}>
-                          <ScrollText size={14} aria-hidden />
-                        </IconButton>
-                      </>
-                    ) : null}
-                    <IconButton label={`Edit ${task.name}`} onClick={() => setEditing(task)}>
-                      <Pencil size={14} aria-hidden />
-                    </IconButton>
-                    <IconButton label={`Delete ${task.name}`} onClick={() => void act(request("DELETE", `/api/tasks/${encodeURIComponent(task.id)}`))}>
-                      <Trash2 size={14} aria-hidden />
-                    </IconButton>
+                    <Button small aria-label={`Open ${task.name}`} onClick={() => setOpened(task.id)}>History</Button>
+                    <Button small aria-label={`Edit ${task.name}`} onClick={() => setEditing(task)}>Edit</Button>
                   </span>
                 </div>
               );
@@ -581,8 +537,6 @@ function TasksView({ page }: { page: boolean }) {
       {editing ? (
         <TaskDialog task={editing === "new" ? null : editing} onClose={closeEditor} onSaved={tasks.reload} />
       ) : null}
-      {webhook ? <WebhookDialog task={webhook} onClose={() => setWebhook(null)} /> : null}
-      {deliveries ? <DeliveriesDialog task={deliveries} onClose={() => setDeliveries(null)} /> : null}
     </>
   );
   return page ? <div className="tasks-page">{content}</div> : content;
