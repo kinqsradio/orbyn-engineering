@@ -150,7 +150,7 @@ function ThemeChoiceRow() {
     applyTheme(next);
   };
   return (
-    <SettingRow title={settingsLabel("appearance-theme")} description="How the app looks on this device.">
+    <SettingRow title={settingsLabel("appearance-theme")}>
       <Segmented label="Theme" value={value} options={LOOKS} onChange={choose} />
     </SettingRow>
   );
@@ -243,6 +243,26 @@ const SIZES: { key: keyof Typography; title: string; min: number; max: number }[
   { key: "terminalSize", title: settingsLabel("appearance-terminal-size"), min: 8, max: 24 },
 ];
 
+function FontRows() {
+  const typography = useUi((state) => state.typography);
+  const theme = useUi((state) => state.theme);
+  const setPrefs = useUi((state) => state.setPrefs);
+  const update = (patch: Partial<Typography>) => {
+    setPrefs({ typography: { ...typography, ...patch } });
+    applyTheme(theme);
+  };
+  return (
+    <SettingGroup>
+      <SettingRow title={settingsLabel("appearance-interface-font")}>
+        <input aria-label="Interface font" placeholder="System" defaultValue={typography.uiFont} onBlur={(event) => update({ uiFont: event.target.value.trim() })} />
+      </SettingRow>
+      <SettingRow title={settingsLabel("appearance-code-font")}>
+        <input aria-label="Code font" placeholder="System" defaultValue={typography.codeFont} onBlur={(event) => update({ codeFont: event.target.value.trim() })} />
+      </SettingRow>
+    </SettingGroup>
+  );
+}
+
 function TypographyGroup() {
   const typography = useUi((state) => state.typography);
   const theme = useUi((state) => state.theme);
@@ -253,12 +273,6 @@ function TypographyGroup() {
   };
   return (
     <SettingGroup title="Typography">
-      <SettingRow title={settingsLabel("appearance-interface-font")}>
-        <input aria-label="Interface font" placeholder="System" defaultValue={typography.uiFont} onBlur={(event) => update({ uiFont: event.target.value.trim() })} />
-      </SettingRow>
-      <SettingRow title={settingsLabel("appearance-code-font")}>
-        <input aria-label="Code font" placeholder="System" defaultValue={typography.codeFont} onBlur={(event) => update({ codeFont: event.target.value.trim() })} />
-      </SettingRow>
       {SIZES.map(({ key, title, min, max }) => (
         <SettingRow key={key} title={title}>
           <input
@@ -292,9 +306,14 @@ export function AppearanceSection() {
       <h1 className="sr-only" tabIndex={-1} data-page-title>
         Appearance
       </h1>
-      <SettingGroup title="Theme">
+      <SettingGroup>
         <ThemeChoiceRow />
+      </SettingGroup>
+      <SettingGroup>
         <LayoutRow />
+      </SettingGroup>
+      <FontRows />
+      <SettingGroup title="Theme">
         <SettingRow
           title={settingsLabel("appearance-environment-identification")}
           description="How the sidebar marks a Dev or Nightly build of this environment."

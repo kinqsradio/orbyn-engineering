@@ -150,7 +150,8 @@ describe("App against the mock API", () => {
       await user.click(await screen.findByRole("button", { name: "Check for updates" }));
       await waitFor(() => expect(mock.updates.checked_at).not.toBe(before));
       expect(mock.updates.engines[0]?.current).toBe("2.1.14");
-      const background = screen.getByRole("checkbox", { name: "Check in the background" });
+      go("#/settings/about");
+      const background = await screen.findByRole("switch", { name: "Check for updates automatically" });
       await waitFor(() => expect(background).toBeEnabled());
       await user.click(background);
       await waitFor(() => expect(background).not.toBeChecked());

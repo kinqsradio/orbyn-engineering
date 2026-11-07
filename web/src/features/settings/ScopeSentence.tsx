@@ -1,6 +1,6 @@
 import { api } from "../../api/client";
 import { useAsync } from "../../lib/useAsync";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, Folder } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "../../ui/controls";
 import { usePopover } from "../../ui/usePopover";
@@ -100,7 +100,8 @@ function LocalEnvironmentLabel() {
 }
 
 /** The local project/checkouts axis; remote environment choices are outside this app's scope. */
-export function ScopeSentence() {
+/** `project` draws the Projects frame: one line saying what applies, then the project picker. */
+export function ScopeSentence({ variant }: { variant?: "project" } = {}) {
   const scope = useSettingsScope();
   if (!scope?.active) return null;
   const groups = scope.catalog?.groups ?? [];
@@ -117,14 +118,15 @@ export function ScopeSentence() {
   const pickerValue = checkoutSelection ? checkout?.physical_key ?? `unavailable:${checkoutSelection.project_id}` : groupKey;
   return (
     <div className="settings-scope">
+      {variant === "project" ? <p className="settings-scope-line"><Folder size={13} aria-hidden />Applies to one project</p> : null}
       <div className="settings-scope-line">
-        <span>Applying settings for</span>
+        {variant === "project" ? null : <span>Applying settings for</span>}
         <ScopePicker axis="Project" label={scope.loading ? "Loading projects…" : projectLabel} value={pickerValue}
           disabled={scope.loading || !scope.catalog} allLabel="All projects"
           options={groups.map((group) => ({ key: group.key, label: group.label,
             path: groups.some((other) => other.key !== group.key && other.label === group.label) ? group.members[0]?.path ?? group.members[0]?.name : undefined }))}
           onSelect={(key) => scope.select(key === undefined ? undefined : { kind: "project_group", group_key: key })} />
-        <span>on</span><LocalEnvironmentLabel />
+        {variant === "project" ? null : <><span>on</span><LocalEnvironmentLabel /></>}
 
       </div>
       {scope.error ? <p role="alert">{scope.error.message} <Button small onClick={scope.reload}>Retry</Button></p> : null}

@@ -89,8 +89,8 @@ function ModelDefaults({ query, disabled }: { query: ProjectScopesQuery; disable
     }} />;
   const overrides = [...new Set(rows.flatMap((row) => row?.overrides.map((entry) => entry.project_id) ?? []))];
   const hasOverride = rows.some((row) => row?.members.some((member) => member.view.source === "project"));
-  return <SettingGroup title="New threads">
-    <SettingRow title="Model" description={all ? "Default model for new threads. Projects can override it." : "Model for new threads in this project."} actions={
+  return <SettingGroup>
+    <SettingRow title="Default model" description={all ? "Default model for new threads. Projects can override it." : "Overrides General"} actions={
       <div className="setting-inheritance-actions">
         {inheritance(engineRow, "Default provider")}
         {inheritance(modelRow, "Default model")}

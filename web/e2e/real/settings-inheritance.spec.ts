@@ -103,17 +103,6 @@ test("project settings explain inheritance and reset only their own override", a
     expect((await api<Pref[]>("GET", `/api/preferences?project_id=${a.id}`)).find((entry) => entry.key === "worktree_submodules")?.value).toBe("top-level");
     await submodules.getByRole("button", { name: "Reset Submodules to default", exact: true }).click();
     await expect(submodules.getByRole("combobox")).toHaveValue("none");
-    const checkoutRow = dialog.locator(".setting-line").filter({ has: page.getByText("Default checkout", { exact: true }) });
-    await expect(checkoutRow.getByRole("combobox")).toHaveValue("worktree");
-    await checkoutRow.getByRole("button", { name: /Inherited from orbyn.json.*Show where/ }).click();
-    const checkoutLayers = dialog.getByRole("dialog", { name: "Default checkout", exact: true });
-    await expect(checkoutLayers.getByText("orbyn.json", { exact: true }).locator("..")).toHaveText(/New worktree/);
-    await expect(checkoutLayers.getByText("Default", { exact: true }).locator("..")).toHaveText(/Current checkout/);
-    await page.keyboard.press("Escape");
-    await checkoutRow.getByRole("combobox").selectOption("local");
-    await expect(checkoutRow.getByRole("button", { name: "Reset Default checkout to default", exact: true })).toBeEnabled();
-    await checkoutRow.getByRole("button", { name: "Reset Default checkout to default", exact: true }).click();
-    await expect(checkoutRow.getByRole("combobox")).toHaveValue("worktree");
     await page.goto(settingsUrl("source-control"));
     const title = "Automatically pull";
     const row = dialog.locator(".setting-line").filter({ has: page.getByText(title, { exact: true }) });

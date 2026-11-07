@@ -34,10 +34,11 @@ export function SettingRow({
   );
 }
 
-export function SettingGroup({ title, description, children }: { title: string; description?: ReactNode; children: ReactNode }) {
+/** A group of rows. With no title the rows stand alone, as the settings frames draw them. */
+export function SettingGroup({ title, description, children }: { title?: string; description?: ReactNode; children: ReactNode }) {
   return (
     <section className="setting-group">
-      <h2>{title}</h2>
+      {title ? <h2>{title}</h2> : null}
       {description ? <div className="setting-group-desc">{description}</div> : null}
       <div className="setting-list">{children}</div>
     </section>

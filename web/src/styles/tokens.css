@@ -94,6 +94,7 @@
   --radius-7: 7px;
   --radius-9: 9px;
   --radius-10: 10px;
+  --radius-11: 11px;
   --radius-14: 14px;
   --radius-20: 20px;
 
@@ -108,6 +109,7 @@
   --text-nav: 12.5px;
   --text-label: 11.5px;
   --text-page: 22px;
+  --text-section: 18px;
   --text-display: 26px;
   --text-figure: 36px;
   /* Further sizes the internal designs use, at their exact values. */

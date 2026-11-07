@@ -11,6 +11,7 @@ import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { useUi } from "../../state/ui";
 import { PreferenceGroups } from "./PreferenceRows";
 import { Toggle } from "./PreferenceSections";
+import { HistoryImport } from "./HistoryImport";
 import { useSettingsScope } from "./SettingsScopeContext";
 
 const AFTER_DAYS: { value: number | null; label: string }[] = [
@@ -82,14 +83,18 @@ export function ThreadsSection() {
       <h1 className="sr-only" tabIndex={-1} data-page-title>
         Threads
       </h1>
-      <SettingGroup title="Sidebar">
+      <SettingGroup>
         <Toggle
           title={settingsLabel("threads-group-by-project")}
-          description="List active threads under their project in the sidebar."
+          description="In the sidebar"
           on={folders}
           set={(on) => setPrefs({ projectFolders: on })}
         />
       </SettingGroup>
+      <PreferenceGroups groups={[{ title: "", rows: [
+        { key: "auto_thread_titles", title: settingsLabel("threads-name-new-threads"), description: "From the first message" },
+      ] }]} />
+      <HistoryImport inSettings />
       <PreferenceGroups groups={[{ title: "Auto-settle", rows: [
         { key: "auto_settle_after_days", title: settingsLabel("threads-settle-idle-threads"),
           description: "Move finished threads into Settled after a quiet period.",
@@ -99,19 +104,6 @@ export function ThreadsSection() {
           description: "Settle a thread when its pull request merges." },
         { key: "auto_settle_keep_pull_requests", title: settingsLabel("threads-keep-pull-requests"),
           description: "Leave a thread whose pull request is still open out of idle settling." },
-      ] }, { title: "New threads", rows: [
-        { key: "default_permission_mode", title: settingsLabel("threads-default-permissions"),
-          options: [
-            { value: "supervised", label: "Supervised" },
-            { value: "auto_edits", label: "Auto-accept edits" },
-            { value: "auto", label: "Auto" },
-            { value: "full_access", label: "Full access" },
-          ] },
-        { key: "response_streaming_mode", title: settingsLabel("threads-response-streaming"), segmented: true,
-          options: [
-            { value: "paragraph", label: "By paragraph" },
-            { value: "turn", label: "When the turn ends" },
-          ] },
       ] }, { title: "Agents", rows: [
         { key: "enable_agent_browser_access", title: settingsLabel("threads-agent-browser-access"),
           description: "Lets agents open and drive pages in the Browser panel. Off refuses their browser tools." },
@@ -129,11 +121,6 @@ export function ThreadsSection() {
           {
             title: "Title generation",
             rows: [
-              {
-                key: "auto_thread_titles",
-                title: settingsLabel("threads-name-new-threads"),
-                description: "Title a thread from its first message. Each title spends a little engine usage.",
-              },
               {
                 key: "text_generation_model",
                 title: settingsLabel("threads-title-model"),

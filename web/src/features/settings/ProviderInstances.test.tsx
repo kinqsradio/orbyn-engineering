@@ -101,7 +101,7 @@ describe("provider instance editor", () => {
   });
   it("does not hide the entire configuration owner when the ready live catalog is empty", async () => {
     const user = userEvent.setup(); render(<ProvidersSection />);
-    const add = await screen.findByRole("button", { name: "Add provider" }); await waitFor(() => expect(add).toBeEnabled());
+    const add = await screen.findByRole("button", { name: "Add an instance" }); await waitFor(() => expect(add).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "Select Work" }));
     expect(screen.getByRole("textbox", { name: "Display name" })).toHaveValue("Work");
   });

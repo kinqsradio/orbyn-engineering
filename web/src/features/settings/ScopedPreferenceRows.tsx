@@ -61,7 +61,7 @@ export function ScopedRows({ groups, query }: {
   const save = (row: ScopedPreferenceRow, edit: PreferenceEdit) => { void commit(row, edit); };
   return <>
     {error ? <p className="field-error" role="alert">{error} <button type="button" disabled={busy} onClick={list.reload}>Retry</button></p> : null}
-    {groups.map((group) => <SettingGroup key={group.title} title={group.title}>
+    {groups.filter((group) => group.rows.some((row) => result.rows.some((entry) => entry.key === row.key))).map((group) => <SettingGroup key={group.title} title={group.title}>
       {group.rows.map((row) => {
         const value = result.rows.find((entry) => entry.key === row.key);
         if (!value) return null;

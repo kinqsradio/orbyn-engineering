@@ -39,10 +39,15 @@ export function ProviderArguments({ values, disabled, save }: { values: string[]
   </div></SettingRow>;
 }
 
-export function ProviderInstances({ engines, renderDriver, renderBase, renderInstance, renderStatus }: { engines: EngineStatus[]; renderDriver(engine: EngineStatus): ReactNode; renderBase?(engine: EngineStatus): ReactNode; renderInstance?(engine: EngineStatus): ReactNode; renderStatus?(engine: EngineStatus): ReactNode }) {
+/** Lets the provider table above the editor choose what it shows and open its add dialog. */
+export interface ProviderEditorControl { selected: string | null; select(id: string | null): void; adding: boolean; setAdding(open: boolean): void }
+
+export function ProviderInstances({ engines, control, renderDriver, renderBase, renderInstance, renderStatus }: { control?: ProviderEditorControl; engines: EngineStatus[]; renderDriver(engine: EngineStatus): ReactNode; renderBase?(engine: EngineStatus): ReactNode; renderInstance?(engine: EngineStatus): ReactNode; renderStatus?(engine: EngineStatus): ReactNode }) {
   const scope = useSettingsScope();
   const preferences = useAsync("provider-instances", (signal) => request<ScopedPreferencesResult>("POST", "/api/settings/preferences/query", { scope: {}, keys: ["provider_instances"] }, signal));
-  const [selected, setSelected] = useState<string | null>(null), [adding, setAdding] = useState(false);
+  const [ownSelected, setOwnSelected] = useState<string | null>(null), [ownAdding, setOwnAdding] = useState(false);
+  const selected = control ? control.selected : ownSelected, setSelected = control ? control.select : setOwnSelected;
+  const adding = control ? control.adding : ownAdding, setAdding = control ? control.setAdding : setOwnAdding;
   const [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null), [conflict, setConflict] = useState(false);
   const pending = useRef(false), mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -81,7 +86,7 @@ export function ProviderInstances({ engines, renderDriver, renderBase, renderIns
       if (saved && mounted.current && currentView.current === view) setSelected(null);
     });
   };
-  return <><div className="form-actions"><Button small disabled={disabled} onClick={() => setAdding(true)}>Add provider</Button></div>
+  return <>{control ? null : <div className="form-actions"><Button small disabled={disabled} onClick={() => setAdding(true)}>Add provider</Button></div>}
     {error || preferences.error || conflict ? <p className="field-error" role="alert">{error ?? preferences.error?.message ?? "Settings changed. Reload before saving."} <Button small disabled={busy || preferences.refreshing} onClick={() => { setConflict(false); setError(null); preferences.reload(); }}>Reload</Button></p> : null}
     <div className="provider-instance-layout"><nav aria-label="Providers" className="provider-instance-list">
       {bases.map((engine) => <Button small key={engine.id} tone={base?.id === engine.id ? "primary" : "quiet"} onClick={() => setSelected(engine.id)}>{engine.name}</Button>)}

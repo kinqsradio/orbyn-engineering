@@ -15,7 +15,7 @@ import { AcpRegistry } from "./AcpRegistry";
 import { ErrorState, Loading } from "../../ui/states";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { ProviderInstances } from "./ProviderInstances";
-import { HistoryImport } from "./HistoryImport";
+import { ProviderTable } from "./ProviderTable";
 import { NativeSessions } from "./NativeSessions";
 import { ProjectProviders } from "./ProjectProviders";
 import { followEngineUpdates, UpdateProgressLine, useEngineUpdates } from "./engineUpdates";
@@ -418,6 +418,9 @@ export function ProvidersSection() {
   const updatable = (engines.data ?? []).filter(wantsUpdate);
   const [confirmingAll, setConfirmingAll] = useState(false);
   const [outcomes, setOutcomes] = useState<EngineUpdateOutcome[] | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [registry, setRegistry] = useState(false);
 
   useEffect(() => followEngineUpdates(), []);
 
@@ -490,15 +493,15 @@ export function ProvidersSection() {
       ) : !engines.data ? (
         <Loading label="Loading providers" />
       ) : (<>
+        <ProviderTable engines={engines.data} onEdit={setSelected} onAdd={() => setAdding(true)} onRegistry={() => setRegistry(!registry)} />
         <ProjectProviders engines={engines.data} />
-        <ProviderInstances engines={engines.data} renderBase={(engine) => <NativeSessions engine={engine} />} renderDriver={(engine) => <EngineRow engine={engine} />} renderStatus={(engine) => <>
+        <ProviderInstances control={{ selected, select: setSelected, adding, setAdding }} engines={engines.data} renderBase={(engine) => <NativeSessions engine={engine} />} renderDriver={(engine) => <EngineRow engine={engine} />} renderStatus={(engine) => <>
           {engine.installed ? <Pill tone={supportTone[engine.support]}>{supportLabels[engine.support]}</Pill> : <Pill tone="warn">Not installed</Pill>}
           <dl className="facts"><div><dt>Version</dt><dd>{engine.version ?? "Unknown"}</dd></div><div><dt>Location</dt><dd><code>{engine.path ?? "Not found"}</code></dd></div></dl>
           <UpdateAction engine={engine} />
         </>} renderInstance={(engine) => engine.installed ? <><EngineModelList engine={engine} /><NativeSessions engine={engine} /></> : null} />
       </>)}
-      <HistoryImport />
-      <AcpRegistry />
+      {registry ? <AcpRegistry /> : null}
     </>
   );
 }

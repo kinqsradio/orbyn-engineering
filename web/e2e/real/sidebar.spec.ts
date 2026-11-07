@@ -279,11 +279,11 @@ test("every settings section loads from the real service", async ({ page }) => {
     await expect(page.locator(".settings-head")).toContainText(name);
     await expect(page.getByText(/^Loading/)).toHaveCount(0, { timeout: 10_000 });
   }
-  await nav.getByRole("link", { name: "Threads", exact: true }).click();
-  await page.getByRole("combobox", { name: "Default permissions" }).selectOption("auto");
+  await nav.getByRole("link", { name: "Chat", exact: true }).click();
+  await page.getByRole("combobox", { name: "Default access mode" }).selectOption("auto");
   await expect
     .poll(async () => (await service.api<{ key: string; value: unknown }[]>("GET", "/api/preferences")).find((p) => p.key === "default_permission_mode")?.value)
     .toBe("auto");
-  await page.getByRole("combobox", { name: "Default permissions" }).selectOption("supervised");
+  await page.getByRole("combobox", { name: "Default access mode" }).selectOption("supervised");
   expect(failures).toEqual([]);
 });

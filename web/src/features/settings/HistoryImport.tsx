@@ -18,7 +18,7 @@ const ENGINE_NAMES: Record<string, string> = { claude: "Claude", codex: "Codex" 
  * Claude and Codex conversations from their own history folders. Scanning waits for
  * the person to ask, and an import resumes the engine's session in a trusted project.
  */
-export function HistoryImport() {
+export function HistoryImport({ inSettings = false }: { inSettings?: boolean } = {}) {
   const pushToast = useUi((state) => state.pushToast);
   const [scan, setScan] = useState<HistoryScan | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -61,13 +61,13 @@ export function HistoryImport() {
   };
 
   return (
-    <SettingGroup title="Agent history">
+    <SettingGroup title={inSettings ? undefined : "Agent history"}>
       <SettingRow
-        title={settingsLabel("providers-agent-history")}
-        description="Finds Claude and Codex conversations saved on this computer. Only each one's folder and first prompt are read."
+        title={inSettings ? settingsLabel("threads-import-history") : "Import agent history"}
+        description={inSettings ? "Claude Code and Codex sessions on this computer" : "Finds Claude and Codex conversations saved on this computer. Only each one's folder and first prompt are read."}
       >
         <Button small disabled={busy !== null} onClick={() => void find()}>
-          {scan ? "Scan again" : "Find conversations"}
+          {scan ? "Scan again" : inSettings ? "Import…" : "Find conversations"}
         </Button>
       </SettingRow>
       {scan && scan.sessions.length === 0 ? <p className="setting-line-desc" role="status">No saved conversations found.</p> : null}

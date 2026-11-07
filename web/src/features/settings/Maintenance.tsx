@@ -407,7 +407,6 @@ export function MaintenanceSection() {
   const library = useWorkspace((state) => state.managed.data?.library);
   const unsupported = useWorkspace((state) => state.updatesUnsupported);
   const putUpdates = useWorkspace((state) => state.putUpdates);
-  const settings = useAsync("server-settings", (signal) => api.settings(signal));
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -443,21 +442,6 @@ export function MaintenanceSection() {
           <Button small busy={checking} onClick={() => void check()}>
             Check for updates
           </Button>
-        </SettingRow>
-        <SettingRow title={settingsLabel("maintenance-background-checks")} description="Checks only look. Nothing is applied without a click.">
-          <input
-            type="checkbox"
-            aria-label="Check in the background"
-            checked={settings.data?.background_update_checks !== false}
-            disabled={!settings.data}
-            onChange={(event) => {
-              if (!settings.data) return;
-              const next = { ...settings.data, background_update_checks: event.target.checked };
-              void api.putSettings(next).then(settings.setData, (failure: unknown) => {
-                setError(toFailure(failure).message);
-              });
-            }}
-          />
         </SettingRow>
       </SettingGroup>
       {updates?.error ? <p className="banner banner-warn">{updates.error}</p> : null}

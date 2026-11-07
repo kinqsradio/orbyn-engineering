@@ -27,6 +27,7 @@ import {
 } from "./PreferenceSections";
 import { ScheduledTasksSection } from "./ScheduledTasks";
 import { ThreadsSection } from "./Threads";
+import "./settingsDesign.css";
 
 export const labels: Record<SettingsSection, string> = {
   general: "General",
@@ -165,21 +166,28 @@ function SettingsPageContent({ section, onClose }: { section: SettingsSection | 
             placeholder="Find a setting"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") ref.current?.querySelector<HTMLElement>(".settings-search-menu a")?.click();
+            }}
           />
         </div>
-        <nav className="settings-nav" aria-label="Settings sections" data-searching={Boolean(query.trim())}>
-          {query.trim() ? (
-            <div className="settings-group-list">
-              {results.length || sectionResults.length ? <>
-              {sectionResults.map((section) => <a key={section} onClick={() => setTarget(null)} href={routeHref(sectionRoute(section))}>{labels[section]}</a>)}
+        {searching ? (
+          <div className="settings-search-menu" aria-label="Search results">
+            {results.length || sectionResults.length ? <>
+              {results.length ? <p className="mh">Settings</p> : null}
               {results.map((item) => (
                 <a className="settings-search-result" key={item.id} aria-label={`${item.title} · ${labels[item.section]}`} href={routeHref(sectionRoute(item.section))}
                   onClick={(event) => { event.preventDefault(); setTarget({ id: item.id }); navigate({ name: "settings", section: item.section }); }}>
                   <span>{item.title}</span><small>{labels[item.section]}</small>
                 </a>
-              ))}</> : <p role="status">No settings found</p>}
-            </div>
-          ) : groups.map((group) => (
+              ))}
+              {sectionResults.length ? <p className="mh">Sections</p> : null}
+              {sectionResults.map((section) => <a key={section} onClick={() => setTarget(null)} href={routeHref(sectionRoute(section))}>{labels[section]}</a>)}
+            </> : <p role="status">No settings found</p>}
+          </div>
+        ) : null}
+        <nav className="settings-nav" aria-label="Settings sections">
+          {groups.map((group) => (
             <div key={group.label ?? group.sections[0]} className="settings-group-list">
               {group.label ? <p className="settings-group">{group.label}</p> : null}
               {group.sections.map((entry) => (
@@ -205,8 +213,8 @@ function SettingsPageContent({ section, onClose }: { section: SettingsSection | 
         </header>
         <div className="settings-scroll">
           <div className="settings-body">
-            <ScopeSentence />
-            {current === "general" ? <p className="settings-scope"><Info size={14} aria-hidden />Applies to this computer</p> : null}
+            {current === "archive" || current === "keybindings" ? null : <ScopeSentence variant={current === "projects" ? "project" : undefined} />}
+            {current === "general" ? <p className="settings-scope"><Info size={13} aria-hidden />Applies to this computer</p> : null}
             <SettingRowIds.Provider value={(title) => settingSearchId(current, title)}>
               <View key={current} />
             </SettingRowIds.Provider>

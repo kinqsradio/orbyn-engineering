@@ -76,7 +76,9 @@ export function createMockApi(options: MockOptions = {}) {
   let preferenceValues: Record<string, JsonValue> = {};
   let preferenceOverrides: Record<string, Record<string, JsonValue>> = {};
   const preferenceDefaults: Record<string, JsonValue> = { default_thread_env_mode: "local", branch_name_prefix: "feat",
-    default_engine: "", default_model: "", default_effort: "", default_model_options: {}, fallback_model: "", disabled_engines: [] };
+    default_engine: "", default_model: "", default_effort: "", default_model_options: {}, fallback_model: "", disabled_engines: [],
+    auto_thread_titles: true, default_permission_mode: "supervised", response_streaming_mode: "paragraph", pull_request_merge_method: "squash",
+    source_control_writing_style: { mode: "conventional_commits", custom_instructions: "", follow_templates: true } };
   const subscribers = new Map<string, Set<Subscriber>>();
   const timers = new Set<ReturnType<typeof setTimeout>>();
   const nextId = (prefix: string) => `${prefix}-${++idCounter}`;
@@ -535,6 +537,8 @@ export function createMockApi(options: MockOptions = {}) {
         threads = threads.filter((thread) => thread.project_id !== project.id);
         return { status: 200, body: { files_removed: deleteFiles, kept_path: deleteFiles ? null : project.path } };
       }
+      case "GET /api/keybindings":
+        return { status: 200, body: keybindingsView() };
       case "GET /api/info":
         return { status: 200, body: { ...fixtures.info, remote: scenario === "remote" } };
       case "POST /auth/session":
@@ -914,3 +918,18 @@ export function createMockApi(options: MockOptions = {}) {
 }
 
 export type MockApi = ReturnType<typeof createMockApi>;
+
+/** Fixed shortcuts for the Keybindings page: one clash, no issues. */
+function keybindingsView() {
+  const rule = (key: string, command: string) => ({ key, command, when: null, remove: false });
+  return {
+    path: "~/.orbyn/keybindings.json",
+    rules: [
+      rule("mod+n", "thread.new"), rule("mod+k", "commandPalette.toggle"), rule("mod+shift+b", "threadPanel.toggle"),
+      rule("ctrl+`", "terminal.toggle"), rule("mod+enter", "approval.allow"), rule("alt+down", "thread.nextNeedsYou"),
+      rule("mod+f", "chat.find"), rule("mod+backspace", "thread.archive"),
+    ],
+    issues: [],
+    conflicts: [{ key: "mod+backspace", when: null, commands: ["thread.archive", "Delete"] }],
+  };
+}

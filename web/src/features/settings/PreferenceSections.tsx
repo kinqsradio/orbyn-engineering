@@ -1,8 +1,8 @@
+import { Search } from "lucide-react";
 import { settingsLabel } from "./settingsSearch";
 import { useEffect, useState } from "react";
 import { api, request } from "../../api/client";
 import type { ForgeStatus, Thread } from "../../api/types";
-import { compactAge } from "../../lib/format";
 import type { ProjectGroupingMode } from "../../generated/ProjectGroupingMode";
 import { toFailure, useAsync } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
@@ -72,6 +72,14 @@ export function GeneralSection() {
   return (
     <>
       {heading("General")}
+      <PreferenceGroups groups={[{ title: "", rows: [{
+        key: "default_thread_env_mode",
+        title: settingsLabel("general-new-threads-start-in"),
+        options: [
+          { value: "local", label: "Current checkout" },
+          { value: "worktree", label: "A new worktree" },
+        ],
+      }] }]} />
       <DesktopApp />
       <SettingGroup title="Notifications">
         <SettingRow
@@ -225,7 +233,7 @@ export function ChatSection() {
   return (
     <>
       {heading("Chat")}
-      <SettingGroup title="Display">
+      <SettingGroup>
         <SettingRow title={settingsLabel("chat-chat-width")}>
           <Segmented
             label="Chat width"
@@ -238,6 +246,33 @@ export function ChatSection() {
             onChange={(next) => setPrefs({ chatWidth: next })}
           />
         </SettingRow>
+        <SettingRow title={settingsLabel("chat-while-a-turn-runs-enter")}>
+          <Segmented
+            label="While a turn runs, Enter"
+            value={followUpBehavior}
+            options={[
+              { value: "queue", label: "Queues" },
+              { value: "steer", label: "Steers" },
+            ]}
+            onChange={(next) => setPrefs({ followUpBehavior: next })}
+          />
+        </SettingRow>
+      </SettingGroup>
+      <PreferenceGroups groups={[{ title: "", rows: [
+        { key: "response_streaming_mode", title: settingsLabel("chat-show-answers"), segmented: true,
+          options: [
+            { value: "paragraph", label: "By paragraph" },
+            { value: "turn", label: "When the turn ends" },
+          ] },
+        { key: "default_permission_mode", title: settingsLabel("chat-default-access-mode"),
+          options: [
+            { value: "supervised", label: "Supervised" },
+            { value: "auto_edits", label: "Auto-accept edits" },
+            { value: "auto", label: "Auto" },
+            { value: "full_access", label: "Full access" },
+          ] },
+      ] }]} />
+      <SettingGroup title="Display">
         <SettingRow title={settingsLabel("chat-timestamp-format")}>
           <select aria-label="Timestamp format" value={timestampFormat} onChange={(event) => setPrefs({ timestampFormat: event.target.value as "locale" | "12-hour" | "24-hour" })}>
             <option value="locale">System default</option>
@@ -283,17 +318,6 @@ export function ChatSection() {
             <option value="mod-enter-multiline">Mod+Enter when multiline</option>
             <option value="mod-enter">Mod+Enter</option>
           </select>
-        </SettingRow>
-        <SettingRow title={settingsLabel("chat-follow-up-behavior")}>
-          <Segmented
-            label="Follow-up behavior"
-            value={followUpBehavior}
-            options={[
-              { value: "queue", label: "Queues" },
-              { value: "steer", label: "Steers" },
-            ]}
-            onChange={(next) => setPrefs({ followUpBehavior: next })}
-          />
         </SettingRow>
       </SettingGroup>
       <PreferenceGroups
@@ -357,9 +381,19 @@ export function DiffsSection() {
   return (
     <>
       {heading("Diffs & pull requests")}
-      <SettingGroup title="Display">
+      <SettingGroup>
         <DiffViewRow />
       </SettingGroup>
+      <PreferenceGroups groups={[{ title: "", rows: [{
+        key: "pull_request_merge_method",
+        title: settingsLabel("diffs-merge-method"),
+        options: [
+          { value: "", label: "Ask" },
+          { value: "merge", label: "Merge" },
+          { value: "squash", label: "Squash" },
+          { value: "rebase", label: "Rebase" },
+        ],
+      }] }]} />
       <SettingGroup title="Links">
         <Toggle
           title={settingsLabel("diffs-open-pull-request-links-here")}
@@ -373,16 +407,6 @@ export function DiffsSection() {
           {
             title: "Pull requests",
             rows: [
-              {
-                key: "pull_request_merge_method",
-                title: settingsLabel("diffs-merge-method"),
-                options: [
-                  { value: "", label: "Ask" },
-                  { value: "merge", label: "Merge" },
-                  { value: "squash", label: "Squash" },
-                  { value: "rebase", label: "Rebase" },
-                ],
-              },
               { key: "remove_agent_credits_on_merge", title: settingsLabel("diffs-remove-agent-credits-on-merge") },
             ],
           },
@@ -422,14 +446,6 @@ export function WorktreesSection() {
           {
             title: "New worktrees",
             rows: [
-              {
-                key: "default_thread_env_mode",
-                title: settingsLabel("worktrees-default-checkout"),
-                options: [
-                  { value: "local", label: "Current checkout" },
-                  { value: "worktree", label: "New worktree" },
-                ],
-              },
               { key: "new_worktrees_start_from_origin", title: settingsLabel("worktrees-start-from-origin") },
               {
                 key: "worktree_submodules",
@@ -543,6 +559,7 @@ export function LabsSection() {
 }
 
 function OpenSourceLicenses() {
+  const [open, setOpen] = useState(false);
   const group = (title: string, entries: { name: string; version: string; license: string }[]) => (
     <SettingGroup title={title}>
       {entries.map((entry) => (
@@ -553,10 +570,33 @@ function OpenSourceLicenses() {
     </SettingGroup>
   );
   return (
-    <Advanced>
-      {group("Open source in the interface", licenses.scripts)}
-      {group("Open source in the service", licenses.crates)}
-    </Advanced>
+    <>
+      <SettingGroup>
+        <SettingRow title="Open-source licences">
+          <Button small aria-expanded={open} onClick={() => setOpen(!open)}>{open ? "Hide" : "View"}</Button>
+        </SettingRow>
+      </SettingGroup>
+      {open ? <>{group("Open source in the interface", licenses.scripts)}{group("Open source in the service", licenses.crates)}</> : null}
+    </>
+  );
+}
+
+/** Whether the service looks for an app update on its own. Nothing is applied without a click. */
+function AutomaticUpdateChecks() {
+  const settings = useAsync("server-settings", (signal) => api.settings(signal));
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <>
+      <Toggle
+        title={settingsLabel("about-check-for-updates-automatically")}
+        on={settings.data?.background_update_checks !== false}
+        set={(on) => {
+          if (!settings.data) return;
+          void api.putSettings({ ...settings.data, background_update_checks: on }).then(settings.setData, (failure: unknown) => setError(toFailure(failure).message));
+        }}
+      />
+      {error ? <p className="field-error" role="alert">{error}</p> : null}
+    </>
   );
 }
 
@@ -590,12 +630,18 @@ export function AboutSection() {
   return (
     <>
       {heading("About")}
+      <div className="set-card">
+        <span className="set-logo" aria-hidden>O</span>
+        <div><b>Orbyn Engineering {info.data?.version ?? ""}</b></div>
+      </div>
+      <SettingGroup>
+        <AutomaticUpdateChecks />
+      </SettingGroup>
+      <OpenSourceLicenses />
       <SettingGroup title="Orbyn Engineering">
-        <SettingRow title="Version">{info.data?.version ?? "Unknown"}</SettingRow>
         <SettingRow title="Platform">{info.data ? platformName(info.data.platform) : "Unknown"}</SettingRow>
         <TriageRow />
       </SettingGroup>
-      <OpenSourceLicenses />
     </>
   );
 }
@@ -604,6 +650,8 @@ export function ArchiveSection() {
   const projects = useVisibleProjects();
   const [threads, setThreads] = useState<Thread[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState("");
+  const columns = { gridTemplateColumns: "minmax(0, 1fr) 160px 110px 150px" };
   useEffect(() => {
     if (!projects) return;
     const abort = new AbortController();
@@ -632,28 +680,38 @@ export function ArchiveSection() {
       ) : threads.length === 0 ? (
         <Empty title="No archived threads" />
       ) : (
-        <SettingGroup title="Archived threads">
-          {threads.map((thread) => (
-            <SettingRow
-              key={thread.id}
-              title={thread.title}
-              description={`${projects?.find((p) => p.id === thread.project_id)?.name ?? ""} · ${compactAge(thread.updated_at)}`}
-            >
-              <Button
-                small
-                onClick={() => {
-                  void unarchiveThread(thread);
-                  setThreads(threads.filter((entry) => entry.id !== thread.id));
-                }}
-              >
-                Unarchive
-              </Button>
-              <Button small tone="quiet" onClick={() => void remove(thread)}>
-                Delete
-              </Button>
-            </SettingRow>
-          ))}
-        </SettingGroup>
+        <>
+          <label className="set-find">
+            <Search size={13} aria-hidden />
+            <input aria-label="Find an archived thread" placeholder="Find an archived thread" value={filter} onChange={(event) => setFilter(event.target.value)} />
+          </label>
+          <div className="set-tbl" role="table" aria-label="Archived threads">
+            <div className="set-tr h" role="row" style={columns}>
+              <span role="columnheader">Thread</span><span role="columnheader">Project</span><span role="columnheader">Archived</span><span role="columnheader" />
+            </div>
+            {threads.filter((thread) => thread.title.toLowerCase().includes(filter.trim().toLowerCase())).map((thread) => (
+              <div key={thread.id} role="row" className="set-tr" style={columns}>
+                <span role="cell">{thread.title}</span>
+                <span role="cell" className="t3">{projects?.find((p) => p.id === thread.project_id)?.name ?? ""}</span>
+                <span role="cell" className="t3">{new Date(thread.updated_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
+                <span role="cell" className="row-actions">
+                  <Button
+                    small
+                    onClick={() => {
+                      void unarchiveThread(thread);
+                      setThreads(threads.filter((entry) => entry.id !== thread.id));
+                    }}
+                  >
+                    Restore
+                  </Button>
+                  <Button small tone="danger" onClick={() => void remove(thread)}>
+                    Delete
+                  </Button>
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </>
   );

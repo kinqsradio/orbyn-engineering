@@ -28,20 +28,8 @@ test("logical project settings resolve Mixed and reset explicit overrides throug
     const environment = await service.api<{ environment_label: string }>("GET", "/api/info");
     expect(environment.environment_label.trim()).not.toBe("");
     await expect(page.getByText(environment.environment_label, { exact: true })).toBeVisible();
-    const checkout = page.getByRole("combobox", { name: "Default checkout", exact: true });
-    await expect(checkout).toHaveValue("__mixed__");
-    await checkout.selectOption("worktree");
     type Preference = { key: string; value: unknown; source: string };
     const pref = async (id: string, key: string) => (await service.api<Preference[]>("GET", `/api/preferences?project_id=${id}`)).find((entry) => entry.key === key);
-    await expect.poll(async () => (await pref(two.id, "default_thread_env_mode"))?.value).toBe("worktree");
-    expect((await pref(one.id, "default_thread_env_mode"))?.source).toBe("project");
-    const env = await service.api<Preference[]>("GET", "/api/preferences");
-    expect(env.find((entry) => entry.key === "default_thread_env_mode")?.value).toBe("local");
-    await expect(page.getByRole("button", { name: "Reset Default checkout to default", exact: true })).toBeEnabled();
-    await page.getByRole("button", { name: "Reset Default checkout to default", exact: true }).click();
-    await expect.poll(async () => (await pref(one.id, "default_thread_env_mode"))?.source).toBe("file");
-    await expect(checkout).toHaveValue("__mixed__");
-    expect((await pref(two.id, "default_thread_env_mode"))?.source).toBe("default");
     await page.getByRole("searchbox", { name: "Search settings" }).fill("Branch prefix");
     await page.getByRole("link", { name: "Branch prefix · Worktrees", exact: true }).click();
     expect(page.url()).toContain(`project=${encodeURIComponent(group!.key)}`);
@@ -76,7 +64,7 @@ test("logical project settings resolve Mixed and reset explicit overrides throug
     expect((await pref(two.id, "branch_name_prefix"))?.source).toBe("default");
     await page.goto(`${service.page}#/settings/worktrees?project=removed-project`);
     await expect(page.getByRole("button", { name: "Project scope: Unavailable project", exact: true })).toBeVisible();
-    await expect(checkout).toHaveCount(0);
+    await expect(page.getByRole("textbox", { name: "Branch prefix", exact: true })).toHaveCount(0);
     await page.screenshot({ path: info.outputPath("unavailable-project-settings.png") });
   } finally { await service.stop(); }
 });

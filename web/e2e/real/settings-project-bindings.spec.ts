@@ -51,13 +51,13 @@ for (const row of ROWS) {
   });
 }
 
-test("default permissions and show answers are set per project on the Threads page", async ({ page }) => {
-  await page.goto(await projectSettingsUrl(service, projectId, "threads"));
+test("default access mode and show answers are set for the environment on the Chat page", async ({ page }) => {
+  await page.goto(`${service.page}#/settings/chat`);
   for (const [key, title, value] of [
-    ["default_permission_mode", "Default permissions", "auto"],
+    ["default_permission_mode", "Default access mode", "auto"],
     ["response_streaming_mode", "Show answers", "turn"],
   ] as const) {
-    const environment = await pref(key);
+    const before = (await pref(key))?.value;
     const group = page.getByRole("radiogroup", { name: title, exact: true });
     const choice = key === "response_streaming_mode" ? group.getByRole("radio", { name: "When the turn ends", exact: true }) : null;
     if (choice) {
@@ -68,14 +68,13 @@ test("default permissions and show answers are set per project on the Threads pa
       await expect(select).toBeEnabled();
       await select.selectOption(value);
     }
-    await expect.poll(async () => pref(key, projectId)).toMatchObject({ value, source: "project" });
-    expect(await pref(key)).toEqual(environment);
+    await expect.poll(async () => (await pref(key))?.value).toBe(value);
     await page.getByRole("button", { name: `Reset ${title} to default`, exact: true }).click();
-    await expect.poll(async () => (await pref(key, projectId))?.source).not.toBe("project");
+    await expect.poll(async () => (await pref(key))?.value).toBe(before);
   }
-  // A new thread in the project takes its own default permissions.
-  await page.getByRole("combobox", { name: "Default permissions", exact: true }).selectOption("auto_edits");
-  await expect.poll(async () => (await pref("default_permission_mode", projectId))?.value).toBe("auto_edits");
+  // A new thread takes the environment's default access mode.
+  await page.getByRole("combobox", { name: "Default access mode", exact: true }).selectOption("auto_edits");
+  await expect.poll(async () => (await pref("default_permission_mode"))?.value).toBe("auto_edits");
   const thread = await service.api<{ lifecycle: { permission_mode: string } }>("POST", "/api/threads", {
     project_id: projectId, engine: "codex", model: null, title: "Scoped mode", worktree: null, skill_profile: null,
   });

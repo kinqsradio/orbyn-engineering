@@ -44,7 +44,7 @@ it("asks the service with the observed revisions and applies what it returns", a
   await user.click(await screen.findByRole("button", { name: "Choose a project icon from this computer" }));
   expect(chosen).toHaveBeenCalledWith({ scope: query, membership_version: "v1", expected_revisions: { p1: "4" } });
   await waitFor(() => expect(reload).toHaveBeenCalled());
-  expect(await screen.findByText("Image from this computer")).toBeVisible();
+  expect(await screen.findByRole("button", { name: "Reset project icon" })).toBeVisible();
 });
 
 it("changes nothing when the dialog is cancelled", async () => {
@@ -54,5 +54,5 @@ it("changes nothing when the dialog is cancelled", async () => {
   await user.click(await screen.findByRole("button", { name: "Choose a project icon from this computer" }));
   await waitFor(() => expect(screen.getByRole("button", { name: "Choose a project icon from this computer" })).toBeEnabled());
   expect(reload).not.toHaveBeenCalled();
-  expect(screen.getByText("Automatic")).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Reset project icon" })).toBeNull();
 });

@@ -112,7 +112,7 @@ test("a thread archives, comes back from Archive, and deletes", async ({ page })
   await page.getByRole("menuitem", { name: "Archive thread" }).click();
   await expect(row).toHaveCount(0);
   await page.goto(`${service.page}#/settings/archive`);
-  await page.getByRole("button", { name: "Unarchive" }).first().click();
+  await page.getByRole("button", { name: "Restore" }).first().click();
   await page.getByRole("button", { name: "Close settings" }).click();
   await expect(row).toHaveCount(1);
   await row.click({ button: "right" });
