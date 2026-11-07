@@ -305,7 +305,7 @@ function TypographyGroup() {
       <div className="set-card set-preview">
         <small className="t3">Preview</small>
         <span style={{ fontSize: typography.chatSize }}>The redirect ignores the next parameter.</span>
-        <span className="mono t2" style={{ fontSize: typography.codeSize }}>const next = params.get("next");</span>
+        <span className="mono" style={{ fontSize: typography.codeSize }}>const next = params.get("next");</span>
       </div>
     </>
   );
