@@ -77,6 +77,9 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  color: var(--color-warnText);
+}
+.titlebar-waiting .status-dot {
   color: var(--color-warn);
 }
 .skip-link {
@@ -746,7 +749,7 @@ details[open] > summary > .chev {
 }
 .folder-needs {
   flex: none;
-  color: var(--color-warn);
+  color: var(--color-warnText);
   font-size: var(--text-label);
   font-variant-numeric: tabular-nums;
 }
@@ -785,7 +788,7 @@ details[open] > summary > .chev {
   padding-top: 4px;
 }
 .ledger-head[data-tone="warn"] > span:first-child {
-  color: var(--color-warn);
+  color: var(--color-warnText);
 }
 .ledger-head[data-tone="danger"] > span:first-child {
   color: var(--color-danger);

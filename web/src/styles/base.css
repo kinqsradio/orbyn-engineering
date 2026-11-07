@@ -307,7 +307,7 @@ input[type="checkbox"][role="switch"]:disabled {
 }
 .pill-warn {
   background: var(--color-warnSoft);
-  color: var(--color-warn);
+  color: var(--color-warnText);
 }
 .pill-danger {
   background: var(--color-dangerSoft);
@@ -343,6 +343,10 @@ input[type="checkbox"][role="switch"]:disabled {
   color: var(--color-info);
 }
 .tone-warn {
+  color: var(--color-warnText);
+}
+/* dots keep the fill amber */
+.status-dot.tone-warn {
   color: var(--color-warn);
 }
 .tone-danger {
@@ -517,7 +521,7 @@ input[type="checkbox"][role="switch"]:disabled {
 }
 .banner-warn {
   background: var(--color-warnSoft);
-  color: var(--color-warn);
+  color: var(--color-warnText);
 }
 .banner-warn a {
   color: inherit;

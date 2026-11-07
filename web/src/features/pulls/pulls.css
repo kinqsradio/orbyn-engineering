@@ -206,7 +206,7 @@
   padding: 0 9px;
   border-radius: var(--radius-pill);
   background: var(--color-warnSoft);
-  color: var(--color-warn);
+  color: var(--color-warnText);
   font-size: var(--text-label);
   width: max-content;
 }

@@ -679,7 +679,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--color-warn);
+  color: var(--color-warnText);
   font-size: var(--text-meta);
   font-weight: 500;
   line-height: 16px;
@@ -2056,7 +2056,7 @@ button.detail-row:hover {
   color: var(--color-danger);
 }
 .timeline li[data-tone="attention"] .timeline-label {
-  color: var(--color-warn);
+  color: var(--color-warnText);
 }
 .terminal-panel {
   display: flex;
@@ -2801,7 +2801,7 @@ button.detail-row:hover {
 }
 .zip-badge {
   flex: none;
-  color: var(--color-warn);
+  color: var(--color-warnText);
   font-size: var(--text-meta);
 }
 .zip-entry {
@@ -3337,7 +3337,7 @@ button.detail-row:hover {
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  color: var(--color-warn);
+  color: var(--color-warnText);
   font-size: var(--text-small);
 }
 .composer-banner span {
@@ -3444,7 +3444,7 @@ button.detail-row:hover {
   font-size: var(--text-nav);
 }
 .plan-banner strong {
-  color: var(--color-warn);
+  color: var(--color-warnText);
   font-weight: 500;
 }
 .plan-banner span {

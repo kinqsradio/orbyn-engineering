@@ -327,7 +327,7 @@
   font-variant-numeric: tabular-nums;
 }
 .limit-row[data-low] .limit-head strong {
-  color: var(--color-warn);
+  color: var(--color-warnText);
 }
 .limit-meter {
   height: 4px;

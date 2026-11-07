@@ -762,7 +762,7 @@ kbd {
   display: flex;
   align-items: flex-start;
   gap: 4px;
-  color: var(--color-warn);
+  color: var(--color-warnText);
   font-size: var(--text-small);
 }
 .engine-option-warn svg {
@@ -1007,7 +1007,7 @@ kbd {
 }
 .pull-guide-stale {
   margin-top: 8px;
-  color: var(--color-warn);
+  color: var(--color-warnText);
 }
 .pull-guide-stops {
   display: flex;

@@ -304,7 +304,7 @@
 .platform-threads li[data-state="approval"] .platform-thread-note,
 .platform-threads li[data-state="question"] .platform-thread-note,
 .platform-needs {
-  color: var(--color-warn);
+  color: var(--color-warnText);
 }
 .platform-dot {
   width: 8px;

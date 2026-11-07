@@ -29,7 +29,7 @@
 }
 .ledger-pin-label {
   flex: none;
-  color: var(--color-warn);
+  color: var(--color-warnText);
   font-weight: 500;
 }
 .ledger-pin-text {
