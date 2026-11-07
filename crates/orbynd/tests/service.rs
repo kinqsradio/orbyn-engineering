@@ -271,6 +271,45 @@ async fn remote_mode_needs_tls_assertion_and_exchanges_a_hashed_key() {
 }
 
 #[tokio::test]
+async fn remote_viewers_cannot_make_the_service_run_a_program_check() {
+    let dir = TempDir::new();
+    let service = Service::start(
+        &dir.path().join("data"),
+        Options {
+            args: vec!["--remote".into(), "--tls-terminated".into()],
+            ..Options::default()
+        },
+    );
+    let key = service
+        .access_key
+        .clone()
+        .expect("first start shows the key");
+    let client = reqwest::Client::new();
+    let session = client
+        .post(format!("{}/auth/session", service.url))
+        .json(&json!({ "key": key }))
+        .send()
+        .await
+        .unwrap();
+    let cookie = session
+        .headers()
+        .get("set-cookie")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let pair = cookie.split(';').next().unwrap().to_owned();
+    let refused = client
+        .post(format!("{}/api/engines/probe-binary", service.url))
+        .header("Cookie", pair)
+        .json(&json!({ "path": "/bin/echo" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(refused.status(), 400);
+}
+
+#[tokio::test]
 async fn untrusted_folder_refuses_runs_and_worktrees() {
     let dir = TempDir::new();
     let service = Service::start(&dir.path().join("data"), Options::default());
