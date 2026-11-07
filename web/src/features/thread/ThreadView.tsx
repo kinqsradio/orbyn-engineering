@@ -24,7 +24,7 @@ import { useSidebarDrawer } from "../../app/sidebarDrawer";
 import { markReachable, markUnreachable, useConnectionKind } from "../../state/connection";
 import { routeHref } from "../../state/route";
 import { useThreadLogs, useThreadStream } from "./threadLogs";
-import { GitActions } from "./GitControl";
+import { BranchShortcut, GitActions } from "./GitControl";
 import { LedgerPin } from "./LedgerPin";
 import { useUi } from "../../state/ui";
 import { engineById, useWorkspace } from "../../state/workspace";
@@ -45,6 +45,7 @@ import { ConnectionStatus, ServiceDownBanner } from "./ConnectionStatus";
 import { WorktreeSetupCard } from "./WorktreeSetupCard";
 import { ThreadFind } from "./ThreadFind";
 import { Transcript } from "./Transcript";
+import { FavoriteEditorShortcut } from "./OpenInEditor";
 import { ProjectActionShortcuts } from "./ProjectActionShortcuts";
 
 /** The details card under the Details button while the side panel is closed. Escape or a press outside dismisses it. */
@@ -111,6 +112,7 @@ function TopBar({
       </div>
       <RelatedThreads thread={thread} />
       <GitActions thread={thread} />
+      {branch ? <BranchShortcut thread={thread} /> : null}
       <div className="layout-toggles" role="group" aria-label="Layout">
         <Button small tone="quiet" className="topbar-details" data-details-toggle aria-pressed={detailsShown} aria-haspopup={detailsPopup ? "dialog" : undefined} icon={<Info size={16} aria-hidden />} onClick={onToggleDetails}>
           Details
@@ -463,6 +465,7 @@ export function ThreadView({ id }: { id: string }) {
   return (
     <div className="thread-layout">
       <ProjectActionShortcuts threadId={id} />
+      <FavoriteEditorShortcut threadId={id} />
       <section
         className="thread-main"
         hidden={swapped}
