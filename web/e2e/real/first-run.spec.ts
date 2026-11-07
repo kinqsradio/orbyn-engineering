@@ -18,9 +18,12 @@ test.afterAll(() => service.stop());
 test("a fresh install opens on the draft flow with no setup step", async ({ page }) => {
   await page.setViewportSize(WINDOW);
   await page.goto(service.page);
+  // The welcome steps open first and are never a gate: one click leaves them for the draft flow.
+  await expect(page.getByRole("heading", { name: "Welcome to Orbyn Engineering" })).toBeVisible();
+  await page.getByRole("button", { name: "Skip for now" }).click();
   await expect(page.getByRole("heading", { name: "Add your first project" })).toBeVisible();
-  await expect(page.locator(".no-projects").getByRole("button", { name: "Add project" })).toBeVisible();
-  await expect(page.locator(".no-projects").getByRole("button", { name: "Start without a project" })).toBeVisible();
+  await expect(page.locator(".no-projects").getByRole("button", { name: "Add a folder" })).toBeVisible();
+  await expect(page.locator(".no-projects").getByRole("button", { name: "Clone a repository" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Workspace" })).toBeVisible();
   await expect(page.getByText(/set up/i)).toHaveCount(0);
   await expect(page.getByText("Skills library")).toBeHidden();
@@ -31,7 +34,9 @@ test("a folder is added where it is, and a thread can start without a project", 
   await libraryReady(service);
   await page.setViewportSize(WINDOW);
   await page.goto(service.page);
-  await page.getByRole("button", { name: "Start without a project" }).click();
+  await page.getByRole("button", { name: "Skip for now" }).click();
+  // The empty home no longer offers a project-less start; its draft is still the scratch route.
+  await page.evaluate(() => (location.hash = "#/new/scratch"));
   await expect(page.getByRole("heading", { name: "What should we work on?" })).toBeVisible();
   await expect(page.getByRole("button", { name: "No project" })).toBeVisible();
   await page.getByRole("textbox", { name: "Message" }).fill("Keep this draft");
@@ -39,7 +44,6 @@ test("a folder is added where it is, and a thread can start without a project", 
   await page.getByRole("button", { name: "No project" }).click();
   await page.getByRole("option", { name: "Add project" }).click();
   const palette = page.getByRole("dialog", { name: "Command palette" });
-  await palette.getByRole("button", { name: /Local folder/ }).click();
   await palette.getByLabel("Folder path").fill(service.folder);
   await palette.getByLabel("Folder path").press("Enter");
   await page.getByRole("button", { name: "Trust folder" }).click();
