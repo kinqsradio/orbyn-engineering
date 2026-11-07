@@ -129,9 +129,9 @@ export function InstanceEditor({ store, engines, instance, create, onClose, onSa
       </div>
       {instance.driver === "claude" ? (
         <div className={compactOk ? "fld" : "fld error"}>
-          <label htmlFor="instance-compact">Auto-compact after</label>
-          <input id="instance-compact" inputMode="numeric" placeholder="e.g. 300000" value={draft.compact} spellCheck={false} onChange={(event) => set({ compact: event.target.value })} />
-          {compactOk ? <small className="hint">Compact after 100,000 to 1,000,000 tokens. Leave empty to use Claude's default.</small> : <small className="err">Use 100000 to 1000000.</small>}
+          <label htmlFor="instance-compact">Auto-compact window</label>
+          <input id="instance-compact" inputMode="numeric" placeholder="Default" value={draft.compact} spellCheck={false} onChange={(event) => set({ compact: event.target.value })} />
+          {compactOk ? <small className="hint">100,000 to 1,000,000 tokens. Empty uses Claude’s default.</small> : <small className="err">Use 100000 to 1000000.</small>}
         </div>
       ) : null}
       {driver?.tier === "native" ? null : (

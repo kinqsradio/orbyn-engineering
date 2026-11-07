@@ -59,7 +59,7 @@ describe("provider instance dialog", () => {
     const user = userEvent.setup(); render(<ProvidersSection />);
     await user.click(await screen.findByRole("button", { name: "Edit Claude Code · Work" }));
     const dialog = await screen.findByRole("dialog");
-    const field = within(dialog).getByRole("textbox", { name: "Auto-compact after" });
+    const field = within(dialog).getByRole("textbox", { name: "Auto-compact window" });
     await user.type(field, "99999");
     expect(within(dialog).getByText("Use 100000 to 1000000.")).toBeVisible();
     expect(within(dialog).getByRole("button", { name: "Save" })).toBeDisabled();

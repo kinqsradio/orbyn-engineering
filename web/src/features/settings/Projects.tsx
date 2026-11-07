@@ -151,13 +151,14 @@ type NameRead = {
 type NameForm = { read: NameRead; draft: string; dirty: boolean; rebase: boolean };
 
 /** A name draft belongs to the physical members and read that supplied it. */
-function ProjectName({ query, catalog, group, members, disabled, reload, children }: {
+function ProjectName({ query, catalog, group, members, disabled, reload, before, children }: {
   query: ProjectScopesQuery;
   catalog: ProjectScopeCatalog;
   group: ProjectScopeGroup;
   members: ProjectScopeCheckout[];
   disabled: boolean;
   reload(): void;
+  before?: ReactNode;
   children?: ReactNode;
 }) {
   const current = useMemo<NameRead>(() => ({ catalog, label: group.label,
@@ -217,7 +218,7 @@ function ProjectName({ query, catalog, group, members, disabled, reload, childre
     if (refresh && mounted.current) reload();
   };
   return <section className="setting-group" aria-label="Project">
-    <div className="setting-list"><SettingRow title="Name">
+    <div className="setting-list">{before}<SettingRow title="Name">
       <input aria-label="Project name" className="set-name-input" value={form.draft} disabled={busy} aria-busy={saving || undefined}
         onChange={(event) => {
           const draft = event.target.value;
@@ -386,20 +387,20 @@ function ProjectSelection() {
       <><p className="setting-line-desc">Choose a project to manage its name, icon, checkouts and actions.</p>
         <ProjectModelDefaults query={scope.query} disabled={blocked} />
         <FallbackModel disabled={blocked} /></> : <>
-        <ProjectName query={scope.query} catalog={catalog} group={group} members={members} disabled={blocked} reload={scope.reload}>
+        <ProjectName query={scope.query} catalog={catalog} group={group} members={members} disabled={blocked} reload={scope.reload}
+          before={<ProjectIconSetting query={scope.query} catalog={catalog} members={members} projectName={group.label} disabled={blocked} loading={scope.loading} reload={scope.reload} />}>
           <SettingRow title="Checkouts" description="Folders for this project">
             <div className="set-checkouts">
               {group.members.map((member) => <span key={member.physical_key} className="mono" title={member.path ?? undefined}>{member.path ?? member.name}</span>)}
             </div>
           </SettingRow>
-          <ProjectIconSetting query={scope.query} catalog={catalog} members={members} projectName={group.label} disabled={blocked} loading={scope.loading} reload={scope.reload} />
         </ProjectName>
-        <ProjectModelDefaults query={scope.query} disabled={blocked} />
-        <FallbackModel disabled={blocked} />
         <fieldset className="preference-control" disabled={blocked}>
           <PreferenceGroups groups={[{ title: "", rows: [{ key: "default_project_scripts", title: "Actions", inheritance: true,
             render: (value, _save, control) => <ProjectActions value={value} control={control} /> }] }]} />
         </fieldset>
+        <ProjectModelDefaults query={scope.query} disabled={blocked} />
+        <FallbackModel disabled={blocked} />
         <ProjectRemoval query={scope.query} group={group} members={members} disabled={blocked} reload={scope.reload}
           clearSelection={() => scope.select(undefined)} />
       </>}

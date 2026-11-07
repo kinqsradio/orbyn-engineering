@@ -663,3 +663,21 @@
 .set-grp .set-pill {
   margin-left: 8px;
 }
+/* The model id field under a fallback model's Other… (s-x-projects-fallback-other). */
+.set-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.set-fallback-id {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--color-muted);
+  font-size: var(--text-meta);
+}
+.settings-page .setting-line-control .set-fallback-id input {
+  width: 240px;
+}

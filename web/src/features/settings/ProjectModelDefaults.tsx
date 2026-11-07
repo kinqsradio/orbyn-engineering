@@ -162,11 +162,42 @@ function ModelTuning({ engine, selected, mixed, disabled, inheritance, onChange 
   </SettingRow>;
 }
 
+/** A select of the provider's known models plus Other…, which shows a field for a model id the service takes as free text. */
+export function FallbackControl({ value, save, disabled }: { value: string; save(next: string): void; disabled: boolean }) {
+  const engines = useWorkspace((state) => state.engines.data) ?? [];
+  const engine = engines.find((entry) => entry.installed && !entry.instance_of)?.id ?? null;
+  const models = useEngineModels(engine)?.models ?? [];
+  const known = value === "" || models.some((model) => model.id === value);
+  const [other, setOther] = useState(!known);
+  const [draft, setDraft] = useState(value);
+  const [touched, setTouched] = useState(false);
+  useEffect(() => { setDraft(value); }, [value]);
+  const showOther = other || !known;
+  return <div className="set-fallback">
+    <select aria-label="Fallback model" disabled={disabled} value={showOther ? "__other" : value}
+      onChange={(event) => {
+        const next = event.target.value;
+        if (next === "__other") { setOther(true); setTouched(false); if (known) setDraft(""); return; }
+        setOther(false);
+        save(next);
+      }}>
+      {value === "" && !showOther ? <option value="" disabled>Choose a model</option> : null}
+      {models.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
+      <option value="__other">Other…</option>
+    </select>
+    {showOther ? <label className="set-fallback-id"><span>Model id</span>
+      <input aria-label="Model id" className="mono" spellCheck={false} disabled={disabled} value={draft}
+        onChange={(event) => { setTouched(true); setDraft(event.target.value); }}
+        onBlur={() => { if (touched && draft.trim() !== value) save(draft.trim()); }}
+        onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } }} /></label> : null}
+  </div>;
+}
+
 /** The model a turn runs on when its own has left the provider's list; empty means none. */
 export function FallbackModel({ disabled = false }: { disabled?: boolean }) {
   return <fieldset className="preference-control" disabled={disabled}>
     <PreferenceGroups groups={[{ title: "", rows: [{ key: "fallback_model", title: "Fallback model", inheritance: true,
       description: "Used when the default model is unavailable",
-      parse: (value) => value.trim() }] }]} />
+      render: (value, save, control) => <FallbackControl value={typeof value === "string" ? value : ""} save={save} disabled={control.disabled} /> }] }]} />
   </fieldset>;
 }
