@@ -30,7 +30,7 @@ function StarNotice({ close }: { close(): void }) {
       <p>Give us a star on GitHub to let us know!</p>
       <div className="star-prompt-actions">
         <Button small tone="quiet" onClick={dismiss}>Dismiss</Button>
-        <a className="btn btn-primary btn-small" href="https://github.com/kinqsradio/orbyn-engineering" target="_blank" rel="noopener noreferrer" onClick={dismiss}>Star on GitHub</a>
+        <a className="btn btn-primary btn-small" href="https://github.com/orbyn-dev/orbyn-engineering" target="_blank" rel="noopener noreferrer" onClick={dismiss}>Star on GitHub</a>
       </div>
     </div>
     <IconButton label="Dismiss notification" onClick={dismiss}><X size={14} aria-hidden /></IconButton>

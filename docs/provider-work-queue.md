@@ -1,6 +1,6 @@
 # Provider work without engine logins
 
-Decision for [issue #129](https://github.com/kinqsradio/orbyn-engineering/issues/129):
+Decision for [issue #129](https://github.com/orbyn-dev/orbyn-engineering/issues/129):
 queue the credential-free portion of section I as the next provider batch: I40,
 I41 and I51. I9 is a conditional follow-up, subject to the protocol check below.
 This queues implementation work; it completes no parity row and changes no scope

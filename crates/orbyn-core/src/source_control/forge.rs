@@ -40,7 +40,7 @@ impl crate::app::Core {
                     "GET",
                     "--hostname",
                     "github.com",
-                    "user/starred/kinqsradio/orbyn-engineering",
+                    "user/starred/orbyn-dev/orbyn-engineering",
                     "--silent",
                 ])
                 .current_dir(&self.config.data_dir)

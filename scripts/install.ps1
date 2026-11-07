@@ -1,6 +1,6 @@
 # Installs the `orbyn` command on Windows from a GitHub release, without the desktop app.
 #
-#   irm https://raw.githubusercontent.com/kinqsradio/orbyn-engineering/main/scripts/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/orbyn-dev/orbyn-engineering/main/scripts/install.ps1 | iex
 #
 # $env:ORBYN_VERSION = "1.2.3" pins an exact release; $env:ORBYN_CHANNEL = "nightly"
 # takes the nightly release instead of the latest stable one. The command and its
@@ -20,7 +20,7 @@ function Setting($name, $default) {
   if ([string]::IsNullOrEmpty($value)) { $default } else { $value }
 }
 
-$repo = "kinqsradio/orbyn-engineering"
+$repo = "orbyn-dev/orbyn-engineering"
 $base = Setting "ORBYN_INSTALL_BASE" "https://github.com/$repo/releases"
 $bin = Setting "ORBYN_INSTALL_DIR" (Join-Path $HOME ".local\bin")
 $home_ = Setting "ORBYN_HOME" (Join-Path $HOME ".local\share\orbyn")

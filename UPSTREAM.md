@@ -29,7 +29,7 @@ Each keeps its own login and license.
 
 | Component | License | Pinned in |
 | --- | --- | --- |
-| [orbyn-fullstack-skills](https://github.com/kinqsradio/orbyn-fullstack-skills) snapshot | MIT, with its `LICENSE` inside and beside the bundle | [scripts/library.lock](scripts/library.lock) |
+| [orbyn-fullstack-skills](https://github.com/orbyn-dev/orbyn-fullstack-skills) snapshot | MIT, with its `LICENSE` inside and beside the bundle | [scripts/library.lock](scripts/library.lock) |
 | Rust crates | Their own licenses | `Cargo.lock`, `desktop/src-tauri/Cargo.lock` |
 | npm packages | Their own licenses; see [web/NOTICE](web/NOTICE) | `web/package-lock.json`, `desktop/package-lock.json` |
 

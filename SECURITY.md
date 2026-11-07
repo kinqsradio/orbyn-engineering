@@ -7,7 +7,7 @@ land there.
 
 ## Report a vulnerability privately
 
-Use [GitHub private vulnerability reporting](https://github.com/kinqsradio/orbyn-engineering/security/advisories/new).
+Use [GitHub private vulnerability reporting](https://github.com/orbyn-dev/orbyn-engineering/security/advisories/new).
 Do not open a public issue for a vulnerability.
 
 Include:

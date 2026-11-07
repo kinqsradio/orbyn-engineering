@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const labels = JSON.parse(readFileSync(join(root, ".github/labels.json"), "utf8"));
-const repo = process.argv[2] ?? "kinqsradio/orbyn-engineering";
+const repo = process.argv[2] ?? "orbyn-dev/orbyn-engineering";
 
 for (const { name, color, description } of labels) {
   execFileSync(
