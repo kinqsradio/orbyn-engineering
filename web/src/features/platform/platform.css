@@ -223,7 +223,7 @@
 }
 .platform-digits {
   font-family: var(--font-mono);
-  font-size: 24px;
+  font-size: var(--text-page);
   letter-spacing: 0.2em;
 }
 .platform-devices {
@@ -261,7 +261,7 @@
   height: 780px;
   overflow: hidden;
   border: 1px solid var(--color-borderStrong);
-  border-radius: 32px;
+  border-radius: var(--radius-xl);
   background: var(--color-background);
   color: var(--color-text);
 }
