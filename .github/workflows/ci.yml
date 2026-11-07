@@ -5,7 +5,7 @@ name: CI
 #
 # Pull requests run one lane: macOS, the platform the desktop app is used on most, and
 # Linux for the browser suite. Windows runs on main, nightly and on a pull request that
-# touches the desktop shell, the scripts or the workflows, where Windows-only breakage
+# touches the desktop shell, the scripts, the workflows or the Cargo manifests, where Windows-only breakage
 # lives. Main and nightly run every lane and every check.
 on:
   push:
@@ -51,9 +51,9 @@ jobs:
         run: |
           all() { for k in rust web e2e desktop windows; do echo "$k=true" >> "$GITHUB_OUTPUT"; done; echo "Running every check: $1"; }
           if [ "$EVENT" != "pull_request" ]; then all "not a pull request"; exit 0; fi
-          if ! files=$(git diff --name-only "$BASE"...HEAD); then all "could not compare with the base"; exit 0; fi
+          if ! files=$(git diff --no-renames --name-only "$BASE"...HEAD); then all "could not compare with the base"; exit 0; fi
           docs='^(docs/|[^/]+\.md$|\.github/ISSUE_TEMPLATE/|\.github/pull_request_template\.md$|\.github/(CODEOWNERS|labeler\.yml|labels\.json|dependabot\.yml)$)'
-          rust='^(crates/|Cargo\.(toml|lock)$|desktop/src-tauri/|scripts/|\.github/workflows/)'
+          rust='^(crates/|Cargo\.(toml|lock)$|desktop/src-tauri/|scripts/|web/src/generated/|\.github/workflows/)'
           web='^(web/|\.github/workflows/)'
           desktop='^(desktop/|scripts/)'
           code=$(printf '%s\n' "$files" | grep -Ev "$docs" | grep -v '^$' || true)
@@ -66,7 +66,8 @@ jobs:
           # by the Web job's build and the browser suite.
           k=false; [ "$r" = true ] || [ "$d" = true ] && k=true
           # Windows-only breakage lives in the shell, the scripts and the workflows.
-          x=$(has '^(desktop/|scripts/|\.github/workflows/)')
+          # A rename lists both paths (--no-renames), so moving code into docs still counts.
+          x=$(has '^(desktop/|scripts/|\.github/workflows/|Cargo\.(toml|lock)$)')
           printf 'rust=%s\nweb=%s\ne2e=%s\ndesktop=%s\nwindows=%s\n' "$r" "$w" "$e" "$k" "$x" >> "$GITHUB_OUTPUT"
           echo "rust=$r web=$w e2e=$e desktop=$k windows=$x"
           printf '%s\n' "$files"
