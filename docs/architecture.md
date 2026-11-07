@@ -173,7 +173,7 @@ by `thread/start` or `thread/resume`; a missing required model is an error rathe
 than an invented default. Built-in mode instructions and Orbyn's separate thread
 context are both retained. The collaboration mode does not widen permissions.
 
-`response_streaming_mode` `turn` holds a reply's text until that message ends;
+`response_streaming_mode` (a device choice, never per project) `turn` holds a reply's text until that message ends;
 `paragraph` is the default and writes it as it comes, merged over 33 ms. Reasoning and
 tools always go out as they happen. Steering answers `delivered` or `queued`: an engine
 with no mid-turn input takes it on the next turn, and an engine that refuses one sends it
@@ -276,7 +276,7 @@ Effort and options carry only along with their model: the request's own, then th
 project's `default_effort` and `default_model_options` when the thread's model is that
 default model, then the remembered ones for the same model. `default_model_options`
 holds option ids with one string value each and never `effort`, which has its own key.
-A project's `default_permission_mode` also applies there.
+The device's `default_permission_mode` also applies there; it is not set per project.
 
 The new-thread draft resolves that physical project's effective model preferences
 before sending an implicit selection. A model picked in the draft wins over a

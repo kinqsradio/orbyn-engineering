@@ -315,11 +315,11 @@ async fn real_scope_edits_fan_out_with_mixed_sources_null_inherit_and_explicit_r
     // File inheritance uses the same resolver as the legacy endpoint.
     std::fs::write(
         Path::new(projects[0]["path"].as_str().unwrap()).join("orbyn.json"),
-        r#"{"defaultThreadEnvMode":"worktree"}"#,
+        r#"{"worktreeSubmodules":"none"}"#,
     )
     .unwrap();
-    let file = query(&service, scope.clone(), &["default_thread_env_mode"]).await;
-    assert_eq!(row(&file, "default_thread_env_mode")["mixed"], true);
+    let file = query(&service, scope.clone(), &["worktree_submodules"]).await;
+    assert_eq!(row(&file, "worktree_submodules")["mixed"], true);
     service.stop().await;
 }
 
