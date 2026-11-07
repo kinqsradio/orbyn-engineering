@@ -438,6 +438,10 @@ export function WorktreesSection() {
   return (
     <>
       {heading("Worktrees")}
+      <SettingGroup>
+        <SettingRow title="Worktree folder" description="Next to each project"><span className="mono t2">&lt;project&gt;-wt/&lt;purpose&gt;</span></SettingRow>
+      </SettingGroup>
+      <WorktreeCleanup />
       <PreferenceGroups
         groups={[
           {
@@ -470,7 +474,6 @@ export function WorktreesSection() {
           },
         ]}
       />
-      <WorktreeCleanup />
     </>
   );
 }
