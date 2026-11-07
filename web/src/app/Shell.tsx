@@ -466,37 +466,52 @@ function useGlobalKeys(route: Route) {
 
 /**
  * Keeps the toast stack clear of the composer: `--toast-lift` is how far its top edge stands
- * above the window's bottom, so the stack sits just above it. Only the composer is watched,
- * so a streaming reply costs nothing here.
+ * above the window's bottom, so the stack sits just above it.
  */
-function useToastClearance(key: string) {
+export function useToastClearance(key: string) {
   useEffect(() => {
     const root = document.documentElement;
     let composer: Element | null = null;
-    let frame = 0;
+    let active = true;
     const apply = () => {
       const rect = composer?.getBoundingClientRect();
       const lift = rect && rect.height > 0 ? Math.max(0, window.innerHeight - rect.top + 8) : 0;
       root.style.setProperty("--toast-lift", `${lift}px`);
     };
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(apply);
-    // A screen's composer mounts a little after the route changes; look for it for a second.
-    let tries = 0;
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => {
+      if (!active) return;
+      if (composer && !composer.isConnected) find();
+      else apply();
+    });
     const find = () => {
+      if (composer) observer?.unobserve(composer);
       composer = document.querySelector(".composer");
       if (composer) observer?.observe(composer);
       apply();
-      if (!composer && ++tries < 60) frame = requestAnimationFrame(find);
     };
+    // Detect replacement even when a detached composer can no longer resize. While
+    // it is connected, streaming DOM changes need only a connectivity check.
+    const mutations = new MutationObserver((records) => {
+      if (composer?.isConnected) return;
+      if (composer || records.some((record) => Array.from(record.addedNodes).some(
+        (node) => node instanceof Element && (node.matches(".composer") || node.querySelector(".composer")),
+      ))) find();
+    });
+    mutations.observe(document.body, { childList: true, subtree: true });
     find();
     // The composer glides to the bottom when a first message is sent; its size need not change.
-    window.addEventListener("resize", apply);
-    window.addEventListener("transitionend", apply, true);
+    const update = () => {
+      if (composer && !composer.isConnected) find();
+      else apply();
+    };
+    window.addEventListener("resize", update);
+    window.addEventListener("transitionend", update, true);
     return () => {
-      cancelAnimationFrame(frame);
+      active = false;
+      mutations.disconnect();
       observer?.disconnect();
-      window.removeEventListener("resize", apply);
-      window.removeEventListener("transitionend", apply, true);
+      window.removeEventListener("resize", update);
+      window.removeEventListener("transitionend", update, true);
       root.style.removeProperty("--toast-lift");
     };
   }, [key]);
