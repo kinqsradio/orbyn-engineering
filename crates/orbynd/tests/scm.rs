@@ -973,6 +973,38 @@ async fn details_come_from_one_batched_query_and_merge_per_pull_request() {
 }
 
 #[tokio::test]
+async fn details_repeats_count_once_extras_are_ignored_and_queries_are_batched() {
+    let f = fixture().await;
+    f.hosted();
+    let project = f.project().await;
+    // 3 twice, then 4..=121: 119 distinct rows asked, the first 100 kept.
+    let mut numbers = vec![3, 3];
+    numbers.extend(4..=121);
+    let pulls: Vec<Value> = numbers
+        .iter()
+        .map(|n| json!({ "project_id": project, "number": n }))
+        .collect();
+    let (code, response) = f
+        .service
+        .send("/api/pulls/details", json!({ "pulls": pulls }))
+        .await;
+    assert_eq!(code, 200, "{response}");
+    assert_eq!(response["details"].as_array().unwrap().len(), 2);
+    let log = f.log();
+    let queries: Vec<&str> = log
+        .lines()
+        .filter(|l| l.contains("reviewRequests"))
+        .collect();
+    assert_eq!(queries.len(), 4, "100 rows make four batches of 25");
+    assert!(
+        queries
+            .iter()
+            .all(|q| q.matches("pullRequest(").count() == 25)
+    );
+    assert!(log.contains("p102:") && !log.contains("p103:"));
+}
+
+#[tokio::test]
 async fn a_spent_rate_limit_withholds_every_detail_and_names_them() {
     let f = fixture().await;
     f.hosted();

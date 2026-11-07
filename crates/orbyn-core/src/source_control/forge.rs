@@ -28,6 +28,10 @@ const FORGE_TIMEOUT: Duration = Duration::from_secs(120);
 const LIST_LIMIT: &str = "100";
 /// The details request must not hold a refresh up for long.
 const DETAILS_TIMEOUT: Duration = Duration::from_secs(20);
+/// Pull requests asked in one GraphQL query, to stay inside its node and cost limits.
+const DETAILS_BATCH: usize = 25;
+/// Rows one details request may ask about, the size of a project's list.
+pub const DETAILS_ROW_LIMIT: usize = 100;
 
 impl crate::app::Core {
     /// A fixed, read-only product-repository check through the person's own CLI.
@@ -575,7 +579,7 @@ fn parse_details(response: &Value, project_id: &str, numbers: &[u64]) -> HashMap
 }
 
 fn classify_details(
-    success: bool,
+    _success: bool,
     stdout: &str,
     stderr: &str,
     project_id: &str,
@@ -585,15 +589,22 @@ fn classify_details(
     if said.contains("rate limit") || said.contains("rate_limited") {
         return DetailsOutcome::RateLimited;
     }
-    match serde_json::from_str::<Value>(stdout) {
-        Ok(response) if success && response.get("errors").is_none() => {
-            DetailsOutcome::Details(parse_details(&response, project_id, numbers))
-        }
-        _ => DetailsOutcome::Unavailable,
+    // GraphQL can answer some pull requests and report errors for others, and `gh`
+    // then exits non-zero; every row that came back whole is kept.
+    let Ok(response) = serde_json::from_str::<Value>(stdout) else {
+        return DetailsOutcome::Unavailable;
+    };
+    let found = parse_details(&response, project_id, numbers);
+    if found.is_empty() {
+        DetailsOutcome::Unavailable
+    } else {
+        DetailsOutcome::Details(found)
     }
 }
 
-/// Details for GitHub pull requests, in one request. Other forges have none.
+/// Details for GitHub pull requests, in requests of at most `DETAILS_BATCH` aliases. A
+/// batch that fails leaves only its own rows out; a spent limit ends the whole call.
+/// Other forges have none.
 pub async fn github_details(
     forge: Forge,
     cwd: &Path,
@@ -603,6 +614,27 @@ pub async fn github_details(
     if forge != Forge::GitHub || numbers.is_empty() {
         return DetailsOutcome::Unavailable;
     }
+    let mut all = HashMap::new();
+    for batch in numbers.chunks(DETAILS_BATCH) {
+        match details_batch(forge, cwd, project_id, batch).await {
+            DetailsOutcome::Details(found) => all.extend(found),
+            DetailsOutcome::RateLimited => return DetailsOutcome::RateLimited,
+            DetailsOutcome::Unavailable => {}
+        }
+    }
+    if all.is_empty() {
+        DetailsOutcome::Unavailable
+    } else {
+        DetailsOutcome::Details(all)
+    }
+}
+
+async fn details_batch(
+    forge: Forge,
+    cwd: &Path,
+    project_id: &str,
+    numbers: &[u64],
+) -> DetailsOutcome {
     let query = format!("query={}", details_query(numbers));
     let args = [
         "api",
@@ -2529,6 +2561,17 @@ mod tests {
                 DetailsOutcome::Unavailable
             );
         }
+    }
+
+    #[test]
+    fn errors_beside_data_keep_every_row_that_came_back() {
+        let mut response = details_response();
+        response["errors"] = json!([{ "type": "NOT_FOUND", "path": ["repository", "p5"] }]);
+        let outcome = classify_details(false, &response.to_string(), "", "p", &[3, 4, 5]);
+        let DetailsOutcome::Details(found) = outcome else {
+            panic!("rows with data are kept: {outcome:?}");
+        };
+        assert_eq!(found.len(), 2);
     }
 
     #[test]

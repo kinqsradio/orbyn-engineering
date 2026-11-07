@@ -22,8 +22,8 @@ use tokio::process::Command;
 use crate::app::Core;
 use crate::error::{CoreError, Result};
 use crate::source_control::forge::{
-    self, ALL_FORGES, DETAIL_FIELDS, DetailsOutcome, Forge, PullFilter, create_pull, fetch_pull,
-    forge_of, number_from_url,
+    self, ALL_FORGES, DETAIL_FIELDS, DETAILS_ROW_LIMIT, DetailsOutcome, Forge, PullFilter,
+    create_pull, fetch_pull, forge_of, number_from_url,
 };
 use crate::source_control::git::{git, text};
 use crate::store::{AuditRecord, WatchUpdate};
@@ -557,12 +557,24 @@ impl Core {
     /// What the base list leaves out, for pull requests the caller already shows. GitHub
     /// answers one batched request per project, and only for rows whose details are not
     /// already known (an unchanged `updated_at`, for at most ten minutes) unless the
-    /// request is `fresh`. A project that cannot be read, a failed batch or a forge
+    /// request is `fresh`. Repeated rows count once, and rows past the first 100 are
+    /// ignored and so have no details. A project that cannot be read, a failed batch or a forge
     /// without details leaves those rows out whole. A spent rate limit pauses details for
     /// two minutes and leaves every row without them.
     pub async fn pull_details(&self, request: &PullDetailsRequest) -> Result<PullDetailsResponse> {
         let mut projects: Vec<(&str, Vec<&orbyn_contracts::PullDetailsRef>)> = Vec::new();
+        let mut rows = 0;
         for pull in &request.pulls {
+            let repeated = projects.iter().any(|(id, refs)| {
+                *id == pull.project_id && refs.iter().any(|r| r.number == pull.number)
+            });
+            if repeated {
+                continue;
+            }
+            if rows == DETAILS_ROW_LIMIT {
+                break;
+            }
+            rows += 1;
             match projects.iter_mut().find(|(id, _)| *id == pull.project_id) {
                 Some((_, refs)) => refs.push(pull),
                 None => projects.push((pull.project_id.as_str(), vec![pull])),

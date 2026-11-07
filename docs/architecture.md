@@ -569,7 +569,10 @@ inline review comments) and `viewer_review_state` (the signed-in login's latest 
 `none`). GitHub answers all of a project's rows with one batched GraphQL request, which
 also names the viewer, so the review state needs no other call. A field is absent when
 unknown, never zero or partial. A row is left out whole when its project cannot be read,
-its batch fails or its forge has no details; only GitHub has them.
+its own batch yields no data for it or its forge has no details; only GitHub has them.
+Repeated rows count once, at most 100 rows are read per request (later ones are ignored),
+and a project is asked in queries of at most 25 rows, so one failed or partly erroring
+query costs only the rows it did not return.
 
 Details known for a row are reused while its `updated_at` is unchanged (it moves with every
 comment, review or request) and for at most 10 minutes, so scheduled and background refreshes
