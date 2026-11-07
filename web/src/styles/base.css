@@ -1166,13 +1166,19 @@ input[type="checkbox"][role="switch"]:disabled {
     opacity: 0.5;
   }
 }
+/* Reduced motion, following the Motion Designs reduced-motion section: only fades
+   remain (opacity and colour properties at --m-fast with --m-io, no delay). Slides, pops
+   and scales are not in the transition list, so they jump to their end state and the
+   element simply fades; spinners and every other keyframe loop stop. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
+    transition-property: opacity, color, background-color, border-color, box-shadow, fill, stroke !important;
+    transition-duration: var(--m-fast) !important;
+    transition-timing-function: var(--m-io) !important;
+    transition-delay: 0s !important;
+    animation: none !important;
     scroll-behavior: auto !important;
   }
 }
