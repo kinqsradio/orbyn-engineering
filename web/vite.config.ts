@@ -15,7 +15,9 @@ const realApi = process.env.ORBYN_API;
 const dropOrigin = (proxy: { on(event: "proxyReq", listener: (request: ClientRequest) => void): unknown }) =>
   proxy.on("proxyReq", (request) => request.removeHeader("origin"));
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  // The platform design screens (src/features/platform) exist only outside production builds.
+  define: { __ORBYN_PREVIEWS__: JSON.stringify(mode !== "production") },
   plugins: [react(), ...(realApi ? [] : [mockApi()])],
   server: {
     port: 5273,
@@ -40,4 +42,4 @@ export default defineConfig({
     include: ["src/**/*.test.{ts,tsx}", "mock/**/*.test.ts"],
     css: false,
   },
-});
+}));

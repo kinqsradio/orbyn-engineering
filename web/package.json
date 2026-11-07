@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build && node scripts/assert-no-mock.mjs",
+    "build": "tsc --noEmit && vite build && node scripts/assert-no-mock.mjs && node scripts/assert-no-previews.mjs",
     "preview": "vite preview",
     "check": "tsc --noEmit && eslint .",
     "test": "vitest run",

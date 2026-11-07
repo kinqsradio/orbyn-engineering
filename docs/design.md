@@ -208,5 +208,12 @@ close button returns to the page behind. The page is a labelled region, not a di
 
 The Orbyn Engineer Designs also draw four screens that need engine work that does not
 exist yet (connected-app scopes and a remote-access relay): Sign in to Orbyn, Connect
-Orbyn Planner, Remote access and pairing, and On a phone. They are not built, not even as
-placeholders, and `docs/parity.md` records them as L52–L55.
+Orbyn Planner, Remote access and pairing, and On a phone. They are built as real
+components on sample data in `web/src/features/platform`, behind a development-only
+build flag (`__ORBYN_PREVIEWS__`, true outside `vite build`). Nothing in the app links to
+them; they open by hash route only: `#/preview/account`, `#/preview/connect-planner`,
+`#/preview/pair-phone` and `#/preview/phone`. In a production build the routes fall
+through to the normal app and the code is not in the output (`npm run build` fails if it
+is). Every control is disabled with the reason "Available with Orbyn accounts", and the
+screens make no request. `docs/parity.md` records them as L52–L55, still excluded until
+the platform wiring lands.
