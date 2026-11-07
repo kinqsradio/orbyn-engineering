@@ -177,6 +177,18 @@ describe("App against the mock API", () => {
       expect(within(dialog).getByRole("button", { name: "Update everything" })).toBeDisabled();
     });
 
+    it("expands What's new for rows with an update: app notes and the incoming library changes", async () => {
+      const user = userEvent.setup();
+      render(<App />);
+      const dialog = await openDialog(user);
+      const toggles = within(dialog).getAllByRole("button", { name: "What’s new" });
+      expect(toggles).toHaveLength(2);
+      await user.click(toggles[0]!);
+      expect(within(dialog).getByText("Faster thread loading")).toBeInTheDocument();
+      await user.click(within(dialog).getAllByRole("button", { name: "What’s new" })[1]!);
+      expect(within(dialog).getByText(/\d+ new changes?/)).toBeInTheDocument();
+    });
+
     it("keeps the Skills library row, saying it is up to date, when nothing newer exists", async () => {
       mock.patchUpdates({ library: { ...mock.updates.library, behind: 0, incoming: [] } });
       const user = userEvent.setup();

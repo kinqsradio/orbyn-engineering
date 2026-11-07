@@ -1,5 +1,5 @@
-import { AlertCircle, Check, CircleDashed, Download, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { AlertCircle, Check, ChevronDown, ChevronRight, CircleDashed, Download, Loader2 } from "lucide-react";
+import { useId, useState } from "react";
 import type { UpdateStatus } from "../../api/types";
 import {
   appHasUpdate,
@@ -9,6 +9,7 @@ import {
   type UpdateRunStep,
 } from "../../state/workspace";
 import { Button } from "../../ui/controls";
+import { Markdown } from "../thread/Markdown";
 import { Dialog } from "../../ui/Dialog";
 
 const short = (value: string | null) =>
@@ -66,6 +67,17 @@ function Steps({ steps }: { steps: UpdateRunStep[] }) {
   );
 }
 
+/** "What's new" for a row that has an update; the notes are shown only where the service sends them. */
+function WhatsNew({ id, open, onToggle }: { id: string; open: boolean; onToggle(): void }) {
+  const Chevron = open ? ChevronDown : ChevronRight;
+  return (
+    <button type="button" className="update-whatsnew" aria-expanded={open} aria-controls={id} onClick={onToggle}>
+      <Chevron size={12} aria-hidden />
+      What’s new
+    </button>
+  );
+}
+
 const failedStep = (run: UpdateRun | null) => run?.steps.find((step) => step.state === "failed") ?? null;
 
 export function UpdateEverythingDialog({ onClose }: { onClose(): void }) {
@@ -73,6 +85,8 @@ export function UpdateEverythingDialog({ onClose }: { onClose(): void }) {
   const run = useWorkspace((state) => state.updateRun);
   const engineList = useWorkspace((state) => state.engines.data);
   const runAllUpdates = useWorkspace((state) => state.runAllUpdates);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const notesId = useId();
 
   if (!status) return null;
   const applying = run?.running === true;
@@ -82,6 +96,10 @@ export function UpdateEverythingDialog({ onClose }: { onClose(): void }) {
   const count = availableCount(status);
   const engines = status.engines.filter(engineHasUpdate);
   const appAvailable = appHasUpdate(status);
+
+  const incoming = status.library.behind > 0 ? status.library.incoming : [];
+  const appNotes = appAvailable ? (status.app.notes?.trim() ?? "") : "";
+  const hasNotes = (key: string) => (key === "app" ? appNotes !== "" : key === "library" ? incoming.length > 0 : false);
 
   const rows: { key: string; name: string; current: string | null; latest: string | null; kind: string }[] = [
     ...(appAvailable
@@ -140,17 +158,49 @@ export function UpdateEverythingDialog({ onClose }: { onClose(): void }) {
       {rows.length > 0 ? (
         <div className="update-table" role="list">
           {rows.map((row) => (
-            <div key={row.key} className="update-item" role="listitem">
-              <span>
-                <b className="update-name">{row.name}</b>
-                <br />
-                {row.latest === null && row.key === "library" ? (
-                  <span className="update-versions">{short(row.current)} · Up to date</span>
-                ) : (
-                  <Versions current={row.current} latest={row.latest} />
-                )}
-              </span>
-              <span className="update-kind">{row.kind}</span>
+            <div key={row.key} role="listitem" className="update-row">
+              <div className="update-item">
+                <span>
+                  <b className="update-name">{row.name}</b>
+                  <br />
+                  {row.latest === null && row.key === "library" ? (
+                    <span className="update-versions">{short(row.current)} · Up to date</span>
+                  ) : (
+                    <Versions current={row.current} latest={row.latest} />
+                  )}
+                  {hasNotes(row.key) ? (
+                    <>
+                      <br />
+                      <WhatsNew
+                        id={`${notesId}-${row.key}`}
+                        open={expanded === row.key}
+                        onToggle={() => setExpanded(expanded === row.key ? null : row.key)}
+                      />
+                    </>
+                  ) : null}
+                </span>
+                <span className="update-kind">{row.kind}</span>
+              </div>
+              {expanded === row.key && hasNotes(row.key) ? (
+                <div id={`${notesId}-${row.key}`} className="update-notes">
+                  {row.key === "library" ? (
+                    <>
+                      <b>
+                        {incoming.length} new {incoming.length === 1 ? "change" : "changes"}
+                      </b>
+                      <ul>
+                        {incoming.map((commit) => (
+                          <li key={commit.sha}>
+                            <span className="mono">{commit.sha.slice(0, 7)}</span> {commit.subject}
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  ) : (
+                    <Markdown text={appNotes} />
+                  )}
+                </div>
+              ) : null}
             </div>
           ))}
         </div>
