@@ -194,6 +194,8 @@ export function GeneralSection() {
   );
 }
 
+const MOD = typeof navigator !== "undefined" && /mac/i.test(navigator.platform) ? "⌘" : "Ctrl";
+
 export function ChatSection() {
   const math = useUi((state) => state.mathRendering);
   const wordWrap = useUi((state) => state.wordWrap);
@@ -224,6 +226,13 @@ export function ChatSection() {
             onChange={(next) => setPrefs({ chatWidth: next })}
           />
         </SettingRow>
+        <SettingRow title={settingsLabel("chat-send-shortcut")} description="What sends a message">
+          <select aria-label="Send shortcut" value={sendShortcut} onChange={(event) => setPrefs({ sendShortcut: event.target.value as "enter" | "mod-enter-multiline" | "mod-enter" })}>
+            <option value="enter">Enter</option>
+            <option value="mod-enter-multiline">{MOD} Enter when the message has several lines</option>
+            <option value="mod-enter">{MOD} Enter</option>
+          </select>
+        </SettingRow>
         <SettingRow title={settingsLabel("chat-while-a-turn-runs-enter")}>
           <Segmented
             label="While a turn runs, Enter"
@@ -235,9 +244,10 @@ export function ChatSection() {
             onChange={(next) => setPrefs({ followUpBehavior: next })}
           />
         </SettingRow>
+        <Toggle title={settingsLabel("chat-math-rendering")} on={math} set={(on) => setPrefs({ mathRendering: on })} />
       </SettingGroup>
       <PreferenceGroups groups={[{ title: "", rows: [
-        { key: "response_streaming_mode", title: settingsLabel("chat-show-answers"), segmented: true,
+        { key: "response_streaming_mode", title: settingsLabel("chat-show-answers"),
           options: [
             { value: "paragraph", label: "By paragraph" },
             { value: "turn", label: "When the turn ends" },
@@ -250,20 +260,27 @@ export function ChatSection() {
             { value: "full_access", label: "Full access" },
           ] },
       ] }]} />
-      <SettingGroup title="Display">
+      <SettingGroup>
         <SettingRow title={settingsLabel("chat-timestamp-format")}>
-          <select aria-label="Timestamp format" value={timestampFormat} onChange={(event) => setPrefs({ timestampFormat: event.target.value as "locale" | "12-hour" | "24-hour" })}>
-            <option value="locale">System default</option>
-            <option value="12-hour">12-hour</option>
-            <option value="24-hour">24-hour</option>
-          </select>
+          <Segmented
+            label="Timestamp format"
+            value={timestampFormat}
+            options={[
+              { value: "locale", label: "System default" },
+              { value: "12-hour", label: "12-hour" },
+              { value: "24-hour", label: "24-hour" },
+            ]}
+            onChange={(next) => setPrefs({ timestampFormat: next })}
+          />
         </SettingRow>
-        <Toggle title={settingsLabel("chat-word-wrap")} on={wordWrap} set={(on) => setPrefs({ wordWrap: on })} />
-        <Toggle title={settingsLabel("chat-math-rendering")} on={math} set={(on) => setPrefs({ mathRendering: on })} />
-        <Toggle title={settingsLabel("chat-open-changes-after-large-turns")} on={proactive} set={(on) => setPrefs({ proactivePanels: on })} />
+        <Toggle title={settingsLabel("chat-word-wrap")} description="Wrap long lines in code" on={wordWrap} set={(on) => setPrefs({ wordWrap: on })} />
+        <Toggle title={settingsLabel("chat-keep-checkout-and-branch-visible")} description="In the composer’s context line" on={persistent} set={(on) => setPrefs({ persistentComposerContext: on })} />
+        <Toggle title={settingsLabel("chat-show-skills-in-the-slash-menu")} on={skillsInSlash} set={(on) => setPrefs({ skillsInSlashMenu: on })} />
+        <Toggle title={settingsLabel("chat-float-pages-agents-open")} description="Float a page over the chat instead of replacing the panel" on={autoFloat} set={(on) => setPrefs({ autoFloatPreview: on })} />
+        <Toggle title={settingsLabel("chat-open-changes-after-large-turns")} description="Opens the Changes panel by itself" on={proactive} set={(on) => setPrefs({ proactivePanels: on })} />
       </SettingGroup>
-      <SettingGroup title="Browser">
-        <SettingRow title={settingsLabel("chat-search-engine")}>
+      <SettingGroup>
+        <SettingRow title={settingsLabel("chat-search-engine")} description="For the Browser panel’s address bar">
           <select aria-label="Search engine" value={searchEngine} onChange={(event) => setPrefs({ previewSearchEngine: event.target.value })}>
             <option value="duckduckgo">DuckDuckGo</option>
             <option value="google">Google</option>
@@ -273,51 +290,40 @@ export function ChatSection() {
             <option value="startpage">Startpage</option>
           </select>
         </SettingRow>
-        <SettingRow title={settingsLabel("chat-open-links-in")} description="For links in a thread.">
-          <select aria-label="Open links in" value={linkTarget} onChange={(event) => setPrefs({ linkTarget: event.target.value as "system" | "in-app" })}>
-            <option value="system">System browser</option>
-            <option value="in-app">Browser panel</option>
-          </select>
-        </SettingRow>
-        <Toggle
-          title={settingsLabel("chat-float-pages-agents-open")}
-          description="Shows the page over the chat when the Browser panel isn't open."
-          on={autoFloat}
-          set={(on) => setPrefs({ autoFloatPreview: on })}
-        />
-      </SettingGroup>
-
-      <SettingGroup title="Composer">
-        <Toggle title={settingsLabel("chat-keep-checkout-and-branch-visible")} on={persistent} set={(on) => setPrefs({ persistentComposerContext: on })} />
-        <Toggle title={settingsLabel("chat-show-skills-in-the-slash-menu")} on={skillsInSlash} set={(on) => setPrefs({ skillsInSlashMenu: on })} />
-        <SettingRow title={settingsLabel("chat-send-shortcut")}>
-          <select aria-label="Send shortcut" value={sendShortcut} onChange={(event) => setPrefs({ sendShortcut: event.target.value as "enter" | "mod-enter-multiline" | "mod-enter" })}>
-            <option value="enter">Enter</option>
-            <option value="mod-enter-multiline">Mod+Enter when multiline</option>
-            <option value="mod-enter">Mod+Enter</option>
-          </select>
+        <SettingRow title={settingsLabel("chat-open-links-in")}>
+          <Segmented
+            label="Open links in"
+            value={linkTarget}
+            options={[
+              { value: "system", label: "System browser" },
+              { value: "in-app", label: "Browser panel" },
+            ]}
+            onChange={(next) => setPrefs({ linkTarget: next })}
+          />
         </SettingRow>
       </SettingGroup>
       <PreferenceGroups
         groups={[
           {
-            title: "Links from other apps",
+            title: "",
             rows: [
-              {
-                key: "open_web_links_in_app",
-                title: settingsLabel("chat-open-links-from-other-apps"),
-                description:
-                  "In the macOS desktop app, a web link another app hands to Orbyn opens in the Browser panel of your latest thread. This doesn't make Orbyn your default browser; that stays your choice in System Settings.",
-              },
+              { key: "open_web_links_in_app", title: settingsLabel("chat-open-links-from-other-apps"), description: "macOS links open in the Browser panel" },
             ],
           },
+        ]}
+      />
+      <p className="set-grp">Idle threads and limits</p>
+      <PreferenceGroups
+        groups={[
           {
-            title: "Idle threads",
+            title: "",
             rows: [
               { key: "compact_idle_threads", title: settingsLabel("chat-compact-idle-threads") },
               {
                 key: "idle_compaction",
                 title: settingsLabel("chat-idle-compaction"),
+                description: "When an idle thread is compacted",
+                segmented: true,
                 options: [
                   { value: "on_return", label: "On return" },
                   { value: "before_cache_expiry", label: "Before cache expiry" },

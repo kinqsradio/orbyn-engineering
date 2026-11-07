@@ -528,8 +528,8 @@ describe("App against the mock API", () => {
   it("sets the panel animation duration from Appearance", async () => {
     go("#/settings/appearance");
     render(<App />);
-    const slider = await screen.findByRole("slider", { name: /Panel animations/ });
-    expect(slider).toHaveValue("300");
+    const slider = await screen.findByRole("spinbutton", { name: /Panel animations/ });
+    expect(slider).toHaveValue(300);
     fireEvent.change(slider, { target: { value: "240" } });
     expect(localStorage.getItem("orbyn.prefs.v1")).toContain('"panelAnimationMs":240');
   });

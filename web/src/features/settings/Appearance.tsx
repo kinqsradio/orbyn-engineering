@@ -1,14 +1,12 @@
 import { settingsLabel } from "./settingsSearch";
+import { Info } from "lucide-react";
 import { useRef } from "react";
 import { MAX_PANEL_ANIMATION_MS } from "../../lib/panelAnimations";
-import { applyTheme, useUi, type EnvironmentIdentification, type LayoutChoice, type ThemeChoice, type Typography } from "../../state/ui";
+import { applyTheme, useUi, type LayoutChoice, type ThemeChoice, type Typography } from "../../state/ui";
 import { Button } from "../../ui/controls";
 import { Segmented } from "../../ui/Segmented";
 import { SettingGroup, SettingRow } from "../../ui/SettingRow";
 import { parseThemeFile, THEME_PRESETS, THEME_TOKENS, type ThemeColors } from "../../styles/themes";
-import { api } from "../../api/client";
-import { fullTime } from "../../lib/format";
-import { useAsync } from "../../lib/useAsync";
 import { ENVIRONMENT_ICON_CHOICES } from "./EnvironmentIcon";
 import { PreferenceGroups } from "./PreferenceRows";
 
@@ -19,31 +17,32 @@ function EnvironmentGroup() {
     ...choices.map((choice) => ({ value: choice.value, label: choice.label })),
     ...THEME_PRESETS.map((preset) => ({ value: preset.id, label: preset.name })),
   ];
-  const info = useAsync("appearance-environment", (signal) => api.info(signal));
-  const published = info.data?.environment_theme;
-  const setAt = published ? `Set ${fullTime(new Date(published.set_at).toISOString())}. ` : "";
   return (
+    <>
+    <p className="settings-scope"><Info size={13} aria-hidden />Published to every viewer of this computer</p>
     <PreferenceGroups
       groups={[
         {
-          title: "Environment",
+          title: "",
           rows: [
             {
               key: "default_theme",
               title: settingsLabel("appearance-default-theme"),
-              description: `${setAt}Each device applies it once when it changes, then keeps its own choice.`,
+              description: "The theme a viewer starts with",
               options: themeChoices,
             },
             {
               key: "environment_icon",
               title: settingsLabel("appearance-environment-icon"),
-              description: "The kind of machine this environment shows as.",
+              description: "Shown next to this computer’s name",
               options: ENVIRONMENT_ICON_CHOICES,
             },
           ],
         },
       ]}
     />
+    <p className="banner"><Info size={13} aria-hidden />Anyone who opens this computer’s threads from another device sees this theme and icon.</p>
+    </>
   );
 }
 
@@ -172,7 +171,7 @@ function PresetRow({ scheme }: { scheme: "light" | "dark" }) {
           applyTheme(theme);
         }}
       >
-        <option value="">Orbyn</option>
+        <option value="">{scheme === "dark" ? "Orbyn Dark" : "Orbyn Light"}</option>
         {THEME_PRESETS.filter((preset) => preset.scheme === scheme).map((preset) => (
           <option key={preset.id} value={preset.id}>
             {preset.name}
@@ -263,6 +262,14 @@ function FontRows() {
   );
 }
 
+const SIZE_DEFAULTS: Record<keyof Typography & string, number> = { uiSize: 16, chatSize: 14, codeSize: 13, terminalSize: 12 } as never;
+const SIZE_NOTES: Record<string, string> = {
+  uiSize: "Sidebar, settings and menus. Applied as page zoom: 16 = 100%.",
+  chatSize: "Messages and tool calls",
+  codeSize: "Diffs, code blocks and files",
+  terminalSize: "The terminal drawer",
+};
+
 function TypographyGroup() {
   const typography = useUi((state) => state.typography);
   const theme = useUi((state) => state.theme);
@@ -272,23 +279,35 @@ function TypographyGroup() {
     applyTheme(theme);
   };
   return (
-    <SettingGroup title="Typography">
-      {SIZES.map(({ key, title, min, max }) => (
-        <SettingRow key={key} title={title}>
-          <input
-            type="number"
-            aria-label={title}
-            min={min}
-            max={max}
-            value={typography[key]}
-            onChange={(event) => {
-              const size = Number(event.target.value);
-              if (size >= min && size <= max) update({ [key]: size });
-            }}
-          />
-        </SettingRow>
-      ))}
-    </SettingGroup>
+    <>
+      <SettingGroup>
+        {SIZES.map(({ key, title, min, max }) => (
+          <SettingRow key={key} title={title} description={SIZE_NOTES[key]}>
+            <span className="unit-field">
+              <span className="t3 range-note">{min}–{max} · default {SIZE_DEFAULTS[key]}</span>
+              <input
+                type="number"
+                aria-label={title}
+                min={min}
+                max={max}
+                value={typography[key]}
+                onChange={(event) => {
+                  const size = Number(event.target.value);
+                  if (size >= min && size <= max) update({ [key]: size });
+                }}
+              />
+              <span className="t3">px</span>
+              <Button small disabled={typography[key] === SIZE_DEFAULTS[key]} aria-label={`Reset ${title}`} onClick={() => update({ [key]: SIZE_DEFAULTS[key] })}>Reset</Button>
+            </span>
+          </SettingRow>
+        ))}
+      </SettingGroup>
+      <div className="set-card set-preview">
+        <small className="t3">Preview</small>
+        <span style={{ fontSize: typography.chatSize }}>The redirect ignores the next parameter.</span>
+        <span className="mono t2" style={{ fontSize: typography.codeSize }}>const next = params.get("next");</span>
+      </div>
+    </>
   );
 }
 
@@ -313,39 +332,25 @@ export function AppearanceSection() {
         <LayoutRow />
       </SettingGroup>
       <FontRows />
-      <SettingGroup title="Theme">
-        <SettingRow
-          title={settingsLabel("appearance-environment-identification")}
-          description="How the sidebar marks a Dev or Nightly build of this environment."
-        >
-          <select
-            aria-label="Environment identification"
-            value={environmentIdentification}
-            onChange={(event) => setPrefs({ environmentIdentification: event.target.value as EnvironmentIdentification })}
-          >
-            <option value="artwork">Artwork</option>
-            <option value="pill">Version pill</option>
-            <option value="none">None</option>
-          </select>
-        </SettingRow>
-      </SettingGroup>
-      <SettingGroup title="Theme presets">
-        <PresetRow scheme="dark" />
+      <TypographyGroup />
+      <SettingGroup>
         <PresetRow scheme="light" />
+        <PresetRow scheme="dark" />
         <SettingRow title={settingsLabel("appearance-contrast")}>
-          <select
-            aria-label="Contrast"
+          <Segmented
+            label="Contrast"
             value={contrast}
-            onChange={(event) => {
-              setPrefs({ contrast: event.target.value as "normal" | "more" });
+            options={[
+              { value: "normal", label: "Standard" },
+              { value: "more", label: "Higher" },
+            ]}
+            onChange={(next) => {
+              setPrefs({ contrast: next });
               applyTheme(theme);
             }}
-          >
-            <option value="normal">Normal</option>
-            <option value="more">More</option>
-          </select>
+          />
         </SettingRow>
-        <SettingRow title={settingsLabel("appearance-font-smoothing")}>
+        <SettingRow title={settingsLabel("appearance-font-smoothing")} description="Smooth text on macOS">
           <input
             type="checkbox"
             role="switch"
@@ -357,39 +362,55 @@ export function AppearanceSection() {
             }}
           />
         </SettingRow>
-      </SettingGroup>
-      <EnvironmentGroup />
-      <ThemeEditor />
-      <TypographyGroup />
-      <SettingGroup title="Composer">
-        <SettingRow title={settingsLabel("appearance-effort-display")} description="Show reasoning effort in the composer as its name, such as High, or as bars.">
-          <select
-            aria-label="Effort display"
+        <SettingRow title={settingsLabel("appearance-effort-display")} description="How effort shows in the composer">
+          <Segmented
+            label="Effort display"
             value={effortDisplay}
-            onChange={(event) => setPrefs({ effortDisplay: event.target.value as "label" | "bars" })}
-          >
-            <option value="label">Word</option>
-            <option value="bars">Bars</option>
-          </select>
+            options={[
+              { value: "label", label: "Name" },
+              { value: "bars", label: "Bars" },
+            ]}
+            onChange={(next) => setPrefs({ effortDisplay: next })}
+          />
         </SettingRow>
-      </SettingGroup>
-      <SettingGroup title="Motion">
         <SettingRow
           settingId="appearance-panel-animations"
-          title={`${settingsLabel("appearance-panel-animations")}: ${panelMs === 0 ? "Off" : `${panelMs} ms`}`}
-          description="Animates panels opening and the composer moving."
+          title={settingsLabel("appearance-panel-animations")}
+          description="How long the side panel takes to open. 0 turns it off."
         >
-          <input
-            type="range"
-            aria-label="Panel animations"
-            min={0}
-            max={MAX_PANEL_ANIMATION_MS}
-            step={20}
-            value={panelMs}
-            onChange={(event) => setPanelMs(Number(event.target.value))}
+          <span className="unit-field">
+            <input
+              type="number"
+              aria-label="Panel animations"
+              min={0}
+              max={MAX_PANEL_ANIMATION_MS}
+              step={20}
+              value={panelMs}
+              onChange={(event) => {
+                const next = Number(event.target.value);
+                if (next >= 0 && next <= MAX_PANEL_ANIMATION_MS) setPanelMs(next);
+              }}
+            />
+            <span className="t3">ms</span>
+          </span>
+        </SettingRow>
+      </SettingGroup>
+      <EnvironmentGroup />
+      <SettingGroup>
+        <SettingRow title={settingsLabel("appearance-environment-identification")} description="How the sidebar marks a Dev or Nightly build of this environment.">
+          <Segmented
+            label="Environment identification"
+            value={environmentIdentification}
+            options={[
+              { value: "artwork", label: "Artwork" },
+              { value: "pill", label: "Version pill" },
+              { value: "none", label: "None" },
+            ]}
+            onChange={(next) => setPrefs({ environmentIdentification: next })}
           />
         </SettingRow>
       </SettingGroup>
+      <ThemeEditor />
     </>
   );
 }

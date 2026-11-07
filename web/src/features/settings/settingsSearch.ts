@@ -35,7 +35,7 @@ export const SETTINGS: readonly SettingSearchItem[] = [
   {"id": "chat-chat-width", "title": "Chat width", "section": "chat"},
   {"id": "chat-timestamp-format", "title": "Timestamp format", "section": "chat"},
   {"id": "chat-word-wrap", "title": "Word wrap", "section": "chat"},
-  {"id": "chat-math-rendering", "title": "Math rendering", "section": "chat"},
+  {"id": "chat-math-rendering", "title": "Render maths", "section": "chat"},
   {"id": "chat-open-changes-after-large-turns", "title": "Open Changes after large turns", "section": "chat"},
   {"id": "chat-search-engine", "title": "Search engine", "section": "chat"},
   {"id": "threads-agent-browser-access", "title": "Let agents use the browser", "section": "threads"},

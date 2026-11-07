@@ -355,3 +355,17 @@
 .unit-field .t3 {
   color: var(--color-muted);
 }
+.range-note {
+  font-size: var(--text-meta);
+  white-space: nowrap;
+}
+.set-preview {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  margin-top: 14px;
+}
+.set-card.set-preview .mono {
+  font-family: var(--font-mono);
+  color: var(--color-textSoft);
+}
