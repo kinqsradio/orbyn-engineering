@@ -6,6 +6,8 @@ process.env.PLAYWRIGHT_BROWSERS_PATH ??= "0";
 /** Runs against the dev server's deterministic mock API; `e2e/real` starts the real service. */
 export default defineConfig({
   testDir: "./e2e",
+  // Needs the production build and half an hour; `playwright.perf.config.ts` runs it on purpose.
+  testIgnore: /perf-baseline/,
   timeout: 30_000,
   // Twice the shell's 4 s refresh, so a row that arrives by polling never races the wait.
   expect: { timeout: 10_000 },

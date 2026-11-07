@@ -80,7 +80,7 @@ test("selected project names update the group or checkout without changing paths
     await expect(settings.getByText("Revision", { exact: true })).toHaveCount(0);
     await expect(settings.getByRole("button", { name: /^Settings for / })).toHaveCount(0);
     await expect(settings.getByRole("button", { name: "Trust folder", exact: true })).toHaveCount(0);
-    await expect(settings.getByRole("combobox", { name: "Default workspace", exact: true })).toBeVisible();
+    await expect(settings.getByText("Default model", { exact: true })).toBeVisible();
     await expect(settings.getByRole("button", { name: "Add action", exact: true })).toBeVisible();
     await page.screenshot({ path: info.outputPath("selected-project-detail.png") });
     await page.goto(`${url}&checkout=${encodeURIComponent(one.id)}`);

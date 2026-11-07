@@ -20,9 +20,8 @@ const feedbackResponse = (page: Page) => page.waitForResponse((response) =>
 
 async function openFeedback(page: Page) {
   await page.goto(`${service.page}#/settings/providers`);
-  await page.getByRole("navigation", { name: "Providers" }).getByRole("button", { name: "Codex", exact: true }).click();
-  const row = page.locator(".setting-list > li").filter({ has: page.getByRole("heading", { name: "Codex", exact: true }) });
-  await row.getByRole("button", { name: "Send feedback", exact: true }).click();
+  await page.getByRole("table", { name: "Providers" }).getByRole("button", { name: "Codex", exact: true }).click();
+  await page.getByRole("button", { name: "Send feedback", exact: true }).click();
   return page.getByRole("dialog", { name: "Send feedback to Codex?", exact: true });
 }
 

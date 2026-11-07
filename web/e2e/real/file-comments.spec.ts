@@ -48,7 +48,7 @@ test("file ranges become editable review chips and reach the persisted prompt", 
   await page.screenshot({ path: test.info().outputPath("review-comment-narrow.png") });
   await finalDetails.getByRole("button", { name: "Save comment" }).click();
   await expect(finalDetails).toBeHidden();
-  await expect(viewer.getByRole("button", { name: "Files", exact: true })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Review comment review-source.txt:2", exact: true })).toBeFocused();
   for (const close of ["Cancel", "Escape"]) {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.getByRole("button", { name: "Review comment review-source.txt:2", exact: true }).click();
@@ -58,7 +58,7 @@ test("file ranges become editable review chips and reach the persisted prompt", 
     if (close === "Escape") await page.keyboard.press("Escape");
     else await finalDetails.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect(finalDetails).toBeHidden();
-    await expect(viewer.getByRole("button", { name: "Files", exact: true })).toBeFocused();
+    await expect(page.getByRole("button", { name: "Review comment review-source.txt:2", exact: true })).toBeFocused();
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
   // Editing the file after attachment must not replace the captured prompt context.

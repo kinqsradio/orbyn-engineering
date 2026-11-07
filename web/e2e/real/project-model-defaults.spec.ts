@@ -7,7 +7,7 @@ import type { ProjectScopeCatalog } from "../../src/generated/ProjectScopeCatalo
 import { projectSettingsUrl, startProject, settled, type Service } from "./service";
 
 const modelRow = (page: Page) => page.locator(".setting-line").filter({
-  has: page.locator(".setting-line-title").filter({ hasText: /^Model$/ }),
+  has: page.locator(".setting-line-title").filter({ hasText: /^Default model$/ }),
 });
 const values = async (service: Service, project?: string) => Object.fromEntries(
   (await service.api<{ key: string; value: unknown }[]>("GET", project ? `/api/preferences?project_id=${project}` : "/api/preferences"))
@@ -193,7 +193,8 @@ test("default effort, options and fallback save for the project and reach a new 
     }).toEqual([tuned.id, deep.id, { service_tier: tier.values[0]!.id }]);
 
     // The fallback model is the project's own; the environment keeps none.
-    const fallback = page.getByRole("textbox", { name: "Fallback model" });
+    await page.getByRole("combobox", { name: "Fallback model" }).selectOption("__other");
+    const fallback = page.getByRole("textbox", { name: "Model id" });
     saved = put();
     await fallback.fill(" fake-small ");
     await fallback.blur();

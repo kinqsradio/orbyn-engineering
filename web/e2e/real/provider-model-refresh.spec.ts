@@ -15,9 +15,8 @@ test.afterAll(() => service.stop());
 // Protocol doubles exercise service cache orchestration, not provider qualification.
 test("model refresh retains the real service's good list after discovery failure and recovers", async ({ page }, info) => {
   await page.goto(`${service.page}#/settings/providers`);
-  await page.getByRole("navigation", { name: "Providers" }).getByRole("button", { name: "Codex", exact: true }).click();
-  const row = page.locator(".setting-list > li").filter({ has: page.getByRole("heading", { name: "Codex", exact: true }) });
-  await row.getByRole("button", { name: /^Models \(/ }).click();
+  await page.getByRole("table", { name: "Providers" }).getByRole("button", { name: "Codex", exact: true }).click();
+  const row = page.getByRole("region", { name: "Settings" });
   const refresh = row.getByRole("button", { name: "Refresh Codex models", exact: true });
   await expect(row.getByRole("status")).toContainText("Try refreshing again.");
   unlinkSync(join(root, "lost-models"));
