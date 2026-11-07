@@ -1,10 +1,16 @@
 # Orbyn Engineering
 
-A desktop and local web app for working with coding agents. It runs the Claude
-and Codex command-line tools you already have, with their own login, inside the
+Orbyn Engineering is the Builders app in the Orbyn line: a desktop workspace for
+coding agents, with every builder tool inside. It runs on your own Claude, Codex and
+other engine accounts, with their own login, inside the
 [orbyn-fullstack-skills](https://github.com/orbyn-dev/orbyn-fullstack-skills)
-library as the harness. The core is Rust, the UI is React, and the desktop app is a
-thin Tauri 2 shell. It targets Windows and macOS.
+library as the harness. It is free locally, with Pro for remote access and sync. The
+core is Rust, the UI is React, and the desktop app is a thin Tauri 2 shell. It targets
+Windows and macOS.
+
+Orbyn apps share four promises: private by design, local first, one account and agent
+ready. Memory, Review gate, Skills, Diagrams, Security audit and Inspect are features
+inside this app, not separate apps.
 
 The code is our own. [UPSTREAM.md](UPSTREAM.md) lists the outside programs,
 protocols and packages it uses.
@@ -32,8 +38,26 @@ protocols and packages it uses.
   match your plan.
 - **Engine updates** from the app, through the installer that owns each binary.
 
-Out of scope for now: sign-in, remote access and tunnels, mobile, and anything
-that needs a hosted service.
+## Status of features
+
+Labels are Available, Beta, Building and Planned. Only what works is Available.
+
+| Feature | Status |
+| --- | --- |
+| Threads, approvals, source control, terminals, files, preview and search (above) | Available, not finished |
+| Skills library, built in with no setup | Available |
+| Sign-in to an Orbyn account (one account across the line) | Planned |
+| Remote access from phone and web (Pro) | Planned |
+| Sync across machines (Pro) | Planned |
+| Memory | Planned |
+| Review gate | Planned |
+| Diagrams | Planned |
+| Security audit | Planned |
+| Inspect | Planned |
+| Teams | Planned, later |
+
+Four Planned screens exist only as development-only previews. See
+[docs/design.md](docs/design.md#planned-with-the-orbyn-platform).
 
 ## Layout
 
@@ -45,7 +69,7 @@ that needs a hosted service.
 | `web` | The React UI, shared by the desktop app and the browser. |
 | `desktop/src-tauri` | The thin desktop shell. |
 | `scripts` | Bundling, release and parity tools. `library.lock` pins the bundled library. |
-| `docs` | Architecture, parity list and handoff. |
+| `docs` | Architecture, parity list, design and design inventory, handoff. |
 
 [docs/architecture.md](docs/architecture.md) is the contract: its product rules
 and lifecycles govern every change.

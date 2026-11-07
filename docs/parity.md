@@ -5,6 +5,9 @@ our own words; it is not T3 Code's documentation. Paths in rows point into that
 reference checkout, not this repository. Tick a row only when it works through
 the real service and has a test or an observed run. Mock-only UI does not count.
 
+Visual parity is tracked in [design-inventory.md](design-inventory.md); the T3 rows
+below remain the feature contract.
+
 Surfaces: w web, d desktop, m mobile, s server, c cli.
 
 A row marked `| server done` has its service behavior finished and tested; any
