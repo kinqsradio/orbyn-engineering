@@ -1,7 +1,7 @@
 #!/bin/sh
 # Installs the `orbyn` command on macOS from a GitHub release, without the desktop app.
 #
-#   curl -fsSL https://raw.githubusercontent.com/kinqsradio/orbyn-engineering/main/scripts/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/orbyn-dev/orbyn-engineering/main/scripts/install.sh | sh
 #
 # ORBYN_VERSION=1.2.3 pins an exact release; ORBYN_CHANNEL=nightly takes the nightly
 # release instead of the latest stable one. The command and its service go to
@@ -10,7 +10,7 @@
 # On Windows, use install.ps1.
 set -eu
 
-repo="kinqsradio/orbyn-engineering"
+repo="orbyn-dev/orbyn-engineering"
 base="${ORBYN_INSTALL_BASE:-https://github.com/$repo/releases}"
 bin="${ORBYN_INSTALL_DIR:-$HOME/.local/bin}"
 home="${ORBYN_HOME:-$HOME/.local/share/orbyn}"

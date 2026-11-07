@@ -2,7 +2,7 @@
 
 A desktop and local web app for working with coding agents. It runs the Claude
 and Codex command-line tools you already have, with their own login, inside the
-[orbyn-fullstack-skills](https://github.com/kinqsradio/orbyn-fullstack-skills)
+[orbyn-fullstack-skills](https://github.com/orbyn-dev/orbyn-fullstack-skills)
 library as the harness. The core is Rust, the UI is React, and the desktop app is a
 thin Tauri 2 shell. It targets Windows and macOS.
 

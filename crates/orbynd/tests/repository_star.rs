@@ -49,7 +49,7 @@ async fn repository_star_check_is_a_bounded_fixed_get_without_a_star_mutation() 
             "GET",
             "--hostname",
             "github.com",
-            "user/starred/kinqsradio/orbyn-engineering",
+            "user/starred/orbyn-dev/orbyn-engineering",
             "--silent"
         ])
     );

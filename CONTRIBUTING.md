@@ -143,7 +143,7 @@ point at each other.
 
 Use a separate target directory for every checkout, including worktrees in
 `<repo>-wt/<purpose>/`. Never run builds, Clippy or tests from different checkouts
-against one writable `CARGO_TARGET_DIR`. In [issue #123](https://github.com/kinqsradio/orbyn-engineering/issues/123),
+against one writable `CARGO_TARGET_DIR`. In [issue #123](https://github.com/orbyn-dev/orbyn-engineering/issues/123),
 Cargo reported packages as `Fresh` while tests ran another checkout's binary;
 concurrent runs also produced fingerprint errors and tried to spawn a partially
 written `orbynd`.

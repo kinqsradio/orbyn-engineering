@@ -17,13 +17,13 @@ for (const { starred, close } of [{ starred: false, close: "button" }, { starred
       }
       await expect(notice).toHaveCount(0);
       await send(page, "sixth successful prompt"); await settled(service, thread.id);
-      await expect.poll(() => service.ghCalls().filter((args) => args.includes("user/starred/kinqsradio/orbyn-engineering")).length).toBe(1);
+      await expect.poll(() => service.ghCalls().filter((args) => args.includes("user/starred/orbyn-dev/orbyn-engineering")).length).toBe(1);
       if (starred) {
         await expect.poll(() => page.evaluate(() => localStorage.getItem("orbyn:github-star:dismissed"))).toBe("true");
         await expect(notice).toHaveCount(0);
       } else {
         await expect(notice).toBeVisible();
-        await expect(notice.getByRole("link", { name: "Star on GitHub", exact: true })).toHaveAttribute("href", "https://github.com/kinqsradio/orbyn-engineering");
+        await expect(notice.getByRole("link", { name: "Star on GitHub", exact: true })).toHaveAttribute("href", "https://github.com/orbyn-dev/orbyn-engineering");
         await page.screenshot({ path: info.outputPath("star-prompt.png") });
         if (close === "swipe") {
           const bounds = (await notice.boundingBox())!;
@@ -37,7 +37,7 @@ for (const { starred, close } of [{ starred: false, close: "button" }, { starred
       await page.reload();
       await send(page, "after a fresh page session"); await settled(service, thread.id);
       await expect(notice).toHaveCount(0);
-      expect(service.ghCalls().filter((args) => args.includes("user/starred/kinqsradio/orbyn-engineering"))).toHaveLength(1);
+      expect(service.ghCalls().filter((args) => args.includes("user/starred/orbyn-dev/orbyn-engineering"))).toHaveLength(1);
       expect(service.ghCalls().filter((args) => args.includes("PUT") || args.includes("POST")).some((args) => args.some((arg) => arg.startsWith("user/starred/")))).toBe(false);
     } finally { await service.stop(); }
   });

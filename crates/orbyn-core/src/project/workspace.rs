@@ -21,7 +21,7 @@ use crate::source_control::git::{git, git_raw, is_git_repo, linked_worktrees, te
 use crate::store::{AuditRecord, Store};
 use crate::util::{canonicalize, new_id};
 
-pub const DEFAULT_LIBRARY_URL: &str = "https://github.com/kinqsradio/orbyn-fullstack-skills";
+pub const DEFAULT_LIBRARY_URL: &str = "https://github.com/orbyn-dev/orbyn-fullstack-skills";
 const STATE_KEY: &str = "workspace";
 const INSTRUCTIONS: &[&str] = &[
     "AGENTS.md",
