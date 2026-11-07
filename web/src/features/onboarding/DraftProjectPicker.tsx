@@ -1,7 +1,8 @@
 import { FolderPlus } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Project } from "../../api/types";
 import { ProjectBadge } from "../../ui/badges";
+import { usePopover } from "../../ui/usePopover";
 
 const WIDTH = 288;
 
@@ -26,14 +27,8 @@ export function DraftProjectPicker({
   const [query, setQuery] = useState("");
   const [at, setAt] = useState(0);
 
+  const popover = usePopover({ kind: "fields", root, onClose });
   useLayoutEffect(() => input.current?.focus(), []);
-  useEffect(() => {
-    const close = (event: MouseEvent) => {
-      if (!root.current?.contains(event.target as Node)) onClose();
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [onClose]);
 
   const matches = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -42,9 +37,15 @@ export function DraftProjectPicker({
   const count = matches.length + 1;
   const choose = (index: number) => {
     const project = matches[index];
-    if (!project) onAdd();
-    else if (project.id === current) onClose();
-    else onPick(project);
+    if (!project) {
+      popover.dismiss("select");
+      onAdd();
+    }
+    else if (project.id === current) popover.dismiss("select");
+    else {
+      popover.dismiss("select");
+      onPick(project);
+    }
   };
 
   return (
@@ -66,10 +67,7 @@ export function DraftProjectPicker({
           setAt(0);
         }}
         onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            event.stopPropagation();
-            onClose();
-          } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
             event.preventDefault();
             setAt((at + (event.key === "ArrowDown" ? 1 : -1) + count) % count);
           } else if (event.key === "Enter") {
@@ -102,7 +100,7 @@ export function DraftProjectPicker({
           className="filter-item"
           data-active={at === matches.length || undefined}
           onPointerEnter={() => setAt(matches.length)}
-          onClick={onAdd}
+          onClick={() => choose(matches.length)}
         >
           <span className="filter-icon">
             <FolderPlus size={16} aria-hidden />

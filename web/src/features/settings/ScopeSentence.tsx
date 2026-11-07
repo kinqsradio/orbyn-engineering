@@ -3,6 +3,7 @@ import { useAsync } from "../../lib/useAsync";
 import { Check, ChevronDown } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "../../ui/controls";
+import { usePopover } from "../../ui/usePopover";
 import { EnvironmentIcon } from "./EnvironmentIcon";
 import { useSettingsScope } from "./SettingsScopeContext";
 
@@ -24,17 +25,12 @@ function ScopePicker({ axis, label, value, options, allLabel, disabled, onSelect
   const popup = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
   const listId = useId();
-  const tabClose = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(tabClose.current), []);
+  const popover = usePopover({ kind: "readonly", root: popup, active: open, trigger: () => trigger.current, onClose: () => { setOpen(false); setQuery(""); } });
   const searchable = options.length > 6;
   const choices: Choice[] = [{ key: "", label: allLabel }, ...options];
   const needle = query.trim().toLocaleLowerCase();
   const visible = choices.filter((choice) => `${choice.label} ${choice.path ?? ""}`.toLocaleLowerCase().includes(needle));
-  const close = (restoreFocus = true) => {
-    setOpen(false); setQuery("");
-    if (restoreFocus) trigger.current?.focus();
-  };
-  const choose = (choice: Choice) => { onSelect(choice.key === "" ? undefined : choice.key); close(); };
+  const choose = (choice: Choice) => { popover.dismiss("select"); onSelect(choice.key === "" ? undefined : choice.key); };
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -55,31 +51,19 @@ function ScopePicker({ axis, label, value, options, allLabel, disabled, onSelect
     if (!open) return;
     if (searchable) search.current?.focus();
     else (popup.current?.querySelector<HTMLElement>('[aria-checked="true"]') ?? popup.current?.querySelector<HTMLElement>('[role="menuitemradio"]'))?.focus();
-    const outside = (event: MouseEvent) => {
-      if (event.target instanceof Node && !popup.current?.contains(event.target) && !trigger.current?.contains(event.target)) {
-        setOpen(false); setQuery("");
-      }
-    };
-    document.addEventListener("mousedown", outside);
-    return () => document.removeEventListener("mousedown", outside);
   }, [open, searchable]);
 
   return <>
     <button ref={trigger} type="button" className="btn btn-small" disabled={disabled}
       aria-label={`${axis} scope: ${label}`} aria-haspopup={searchable ? "listbox" : "menu"} aria-expanded={open}
-      onClick={() => { clearTimeout(tabClose.current); setOpen(!open); setHighlight(Math.max(0, choices.findIndex((choice) => choice.key === (value ?? "")))); }}>
+      onClick={() => { setOpen(!open); setHighlight(Math.max(0, choices.findIndex((choice) => choice.key === (value ?? "")))); }}>
       {label}<ChevronDown size={14} aria-hidden />
     </button>
     {open ? (
       <div ref={popup} className="popup-menu" style={{ width: "min(320px, calc(100vw - 16px))", maxHeight: "min(400px, calc(100dvh - 24px))", overflowY: "auto" }}
         role={searchable ? "dialog" : "menu"} aria-label={`${axis} scope`}
         onKeyDown={(event) => {
-          if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); }
-          else if (event.key === "Tab") {
-            // Let native Tab move focus before removing the focused popup node.
-            tabClose.current = setTimeout(() => close(false), 0);
-          }
-          else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
             event.preventDefault();
             const next = (highlight + (event.key === "ArrowDown" ? 1 : -1) + visible.length) % Math.max(1, visible.length);
             setHighlight(next);

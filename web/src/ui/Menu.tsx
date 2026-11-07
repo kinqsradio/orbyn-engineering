@@ -1,7 +1,7 @@
 import { ChevronRight } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { captureFocusReturn, moveFocus, type CloseCause } from "./focusReturn";
+import { captureFocusReturn, moveFocus, watchOutside, type CloseCause } from "./focusReturn";
 import { closingProps } from "./Presence";
 
 export interface MenuItem {
@@ -75,9 +75,9 @@ function MenuList({
       event.preventDefault();
       if (onBack) onBack();
       else onClose("escape");
-    } else if (event.key === "Tab" && !event.shiftKey) {
+    } else if (event.key === "Tab") {
       event.preventDefault();
-      onClose("tab");
+      onClose(event.shiftKey ? "shiftTab" : "tab");
     } else if (event.key === "ArrowLeft" && submenu) {
       event.preventDefault();
       event.stopPropagation();
@@ -230,19 +230,12 @@ export function Menu({
   useEffect(() => {
     // A menu that is leaving must not close the one that replaced it.
     if (closing) return;
-    const outside = (event: MouseEvent) => {
-      if (!(event.target as Element | null)?.closest?.("[data-menu-root]")) latest.current("outside", event.target);
-    };
-    // A window blur or a route change closes the menu and leaves focus alone.
-    const leave = () => latest.current("window");
-    document.addEventListener("mousedown", outside);
-    window.addEventListener("blur", leave);
-    window.addEventListener("hashchange", leave);
-    return () => {
-      document.removeEventListener("mousedown", outside);
-      window.removeEventListener("blur", leave);
-      window.removeEventListener("hashchange", leave);
-    };
+    // Only a real user action outside closes it: a pointer press or a key pressed elsewhere, or a
+    // route change. A window blur or a programmatic focus change does not.
+    return watchOutside(
+      (target) => !!(target as Element | null)?.closest?.("[data-menu-root]"),
+      (cause, target) => latest.current(cause, target),
+    );
   }, [closing]);
 
   // Closed from outside (the trigger toggling it): the same as Escape, unless focus moved on already.

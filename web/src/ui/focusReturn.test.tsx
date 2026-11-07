@@ -1,8 +1,9 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Menu } from "./Menu";
 import { Presence } from "./Presence";
+import { usePopover } from "./usePopover";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -90,28 +91,179 @@ it("leaves focus on a focusable target that is clicked outside, and uses the sav
   render(<Rows />);
   open("more a");
   const after = screen.getByRole("button", { name: "after" });
-  fireEvent.mouseDown(after);
+  fireEvent.pointerDown(after);
   after.focus();
   act(() => void vi.advanceTimersByTime(500));
   expect(after).toHaveFocus();
 
   const trigger = open("more c");
-  fireEvent.mouseDown(document.getElementById("plain")!);
+  fireEvent.pointerDown(document.getElementById("plain")!);
   act(() => void vi.advanceTimersByTime(1));
   expect(trigger).toHaveFocus();
 });
 
-it("moves focus to the next element after the trigger on Tab, and does not move it on a window blur", () => {
+it("moves focus to the next element after the trigger on Tab, and to the one before it on Shift+Tab", () => {
   render(<Rows />);
   open("more c");
   fireEvent.keyDown(screen.getByRole("menu"), { key: "Tab" });
   expect(screen.getByRole("button", { name: "after" })).toHaveFocus();
   act(() => void vi.advanceTimersByTime(500));
 
+  open("more c");
+  fireEvent.keyDown(screen.getByRole("menu"), { key: "Tab", shiftKey: true });
+  // The row is a tab stop before its own button.
+  expect(screen.getByRole("listitem", { name: "row c" })).toHaveFocus();
+  expect(screen.getByRole("menu", { hidden: true })).toHaveAttribute("inert");
+});
+
+it("does not close on a window blur, and does not close when focus is moved by code", () => {
+  render(<Rows />);
   open("more a");
   const item = screen.getByRole("menuitem", { name: "Rename" });
-  expect(item).toHaveFocus();
   fireEvent(window, new Event("blur"));
+  act(() => screen.getByRole("button", { name: "after" }).focus());
+  act(() => void vi.advanceTimersByTime(500));
+  expect(screen.getByRole("menu")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "after" })).toHaveFocus();
+  expect(item).toBeInTheDocument();
+});
+
+it("closes on a key pressed outside, and on a route change, and leaves focus alone", () => {
+  render(<Rows />);
+  open("more a");
+  const after = screen.getByRole("button", { name: "after" });
+  act(() => after.focus());
+  fireEvent.keyDown(after, { key: "a" });
+  expect(after).toHaveFocus();
+  act(() => void vi.advanceTimersByTime(500));
   expect(screen.queryByRole("menu")).toBeNull();
-  expect(item).toHaveFocus();
+
+  open("more b");
+  const item = screen.getByRole("menuitem", { name: "Rename" });
+  fireEvent(window, new HashChangeEvent("hashchange"));
+  act(() => void vi.advanceTimersByTime(500));
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(item.isConnected).toBe(false);
+});
+
+const chainItems = [
+  { label: "Rename" },
+  { label: "Move to…", children: [{ label: "Inbox", onSelect: () => moved() }, { label: "Later" }] },
+];
+const moved = vi.fn();
+
+function Chain() {
+  const [menu, setMenu] = useState(false);
+  return (
+    <main>
+      <button type="button" onClick={() => setMenu(true)}>
+        more
+      </button>
+      <Presence>{menu ? <Menu x={5} y={5} label="Actions" items={chainItems} onClose={() => setMenu(false)} /> : null}</Presence>
+    </main>
+  );
+}
+
+const openChild = () => {
+  const trigger = screen.getByRole("button", { name: "more" });
+  trigger.focus();
+  fireEvent.click(trigger);
+  const parent = screen.getByRole("menuitem", { name: "Move to…" });
+  fireEvent.click(parent);
+  return { trigger, parent };
+};
+
+it("closes only the child on Escape or ArrowLeft, and focuses the item that opened it", () => {
+  render(<Chain />);
+  const { parent } = openChild();
+  fireEvent.keyDown(screen.getByRole("menu", { name: "Move to…" }), { key: "Escape" });
+  expect(screen.queryByRole("menu", { name: "Move to…" })).toBeNull();
+  expect(screen.getByRole("menu", { name: "Actions" })).toBeInTheDocument();
+  expect(parent).toHaveFocus();
+
+  fireEvent.click(parent);
+  fireEvent.keyDown(screen.getByRole("menu", { name: "Move to…" }), { key: "ArrowLeft" });
+  expect(screen.queryByRole("menu", { name: "Move to…" })).toBeNull();
+  expect(parent).toHaveFocus();
+});
+
+it("closes the whole chain when the child chooses, and focus goes to the root trigger", () => {
+  moved.mockClear();
+  render(<Chain />);
+  const { trigger } = openChild();
+  fireEvent.click(screen.getByRole("menuitem", { name: "Inbox" }));
+  expect(moved).toHaveBeenCalledTimes(1);
+  expect(trigger).toHaveFocus();
+  act(() => void vi.advanceTimersByTime(500));
+  expect(screen.queryByRole("menu")).toBeNull();
+});
+
+/** A non-modal popover with two fields, between two other buttons. */
+function Fields({ kind = "fields" as "fields" | "readonly" }) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  usePopover({ kind, root, active: open, trigger: () => trigger.current, onClose: () => setOpen(false) });
+  return (
+    <main>
+      <button type="button">before</button>
+      <button ref={trigger} type="button" onClick={() => setOpen(!open)}>
+        trigger
+      </button>
+      {open ? (
+        <div ref={root} role="dialog" aria-label="Fields">
+          <input aria-label="first" autoFocus />
+          <input aria-label="last" />
+        </div>
+      ) : null}
+      <button type="button">after</button>
+    </main>
+  );
+}
+
+it("walks its fields on Tab, closes after the last to the element after the trigger, with no wrap", () => {
+  render(<Fields />);
+  fireEvent.click(screen.getByRole("button", { name: "trigger" }));
+  const first = screen.getByLabelText("first");
+  const last = screen.getByLabelText("last");
+  first.focus();
+  expect(fireEvent.keyDown(first, { key: "Tab" })).toBe(true);
+  last.focus();
+  fireEvent.keyDown(last, { key: "Tab" });
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.getByRole("button", { name: "after" })).toHaveFocus();
+});
+
+it("goes from the first field to the trigger on Shift+Tab with the popover open, then closes before it", () => {
+  render(<Fields />);
+  const trigger = screen.getByRole("button", { name: "trigger" });
+  fireEvent.click(trigger);
+  const first = screen.getByLabelText("first");
+  first.focus();
+  fireEvent.keyDown(first, { key: "Tab", shiftKey: true });
+  expect(trigger).toHaveFocus();
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  fireEvent.keyDown(trigger, { key: "Tab", shiftKey: true });
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.getByRole("button", { name: "before" })).toHaveFocus();
+});
+
+it("enters the popover on Tab from the trigger, and Escape closes it back to the trigger", () => {
+  render(<Fields />);
+  const trigger = screen.getByRole("button", { name: "trigger" });
+  fireEvent.click(trigger);
+  trigger.focus();
+  fireEvent.keyDown(trigger, { key: "Tab" });
+  expect(screen.getByLabelText("first")).toHaveFocus();
+  fireEvent.keyDown(screen.getByLabelText("last"), { key: "Escape" });
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(trigger).toHaveFocus();
+});
+
+it("closes a read-only popover on Tab and moves on", () => {
+  render(<Fields kind="readonly" />);
+  fireEvent.click(screen.getByRole("button", { name: "trigger" }));
+  fireEvent.keyDown(screen.getByLabelText("first"), { key: "Tab" });
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.getByRole("button", { name: "after" })).toHaveFocus();
 });

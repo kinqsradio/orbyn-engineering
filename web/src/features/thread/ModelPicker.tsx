@@ -1,11 +1,12 @@
 import { Check, ChevronDown, Search, Star } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { EngineStatus } from "../../api/types";
 import { useCommand } from "../../app/shortcuts";
 import { useUi } from "../../state/ui";
 import { EngineGlyph } from "../../ui/badges";
 import { closingProps, Presence } from "../../ui/Presence";
+import { usePopover } from "../../ui/usePopover";
 import { modKeyLabel } from "../workspace/threadUndo";
 import {
   arrangeModels,
@@ -53,19 +54,20 @@ export function FloatingPanel({
   className,
   container,
   closing,
-  onClose,
+  panelRef,
   children,
 }: {
   anchor: DOMRect;
   label: string;
   className: string;
   container?: HTMLElement | null;
-  /** Set by `Presence` while the panel fades out: it takes no focus or pointer and ignores outside clicks. */
+  /** Set by `Presence` while the panel fades out: it takes no focus or pointer. */
   closing?: boolean;
-  onClose(): void;
+  /** The panel's element, for `usePopover`, which owns closing and focus. */
+  panelRef: RefObject<HTMLDivElement | null>;
   children: ReactNode;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
+  const ref = panelRef;
   const side = useRef<FloatingSide | null>(null);
   useLayoutEffect(() => {
     const element = ref.current;
@@ -84,14 +86,6 @@ export function FloatingPanel({
     element.style.top = `${place.top}px`;
     element.style.transformOrigin = place.origin;
   });
-  useEffect(() => {
-    if (closing) return;
-    const close = (event: MouseEvent) => {
-      if (!ref.current?.contains(event.target as Node)) onClose();
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [onClose, closing]);
   return createPortal(
     <div ref={ref} className={className} role="dialog" aria-label={label} {...closingProps(closing)}>
       {children}
@@ -205,6 +199,7 @@ function ModelPopover({
   anchor,
   portalContainer,
   disabledReason,
+  trigger,
   onPick,
   onToggleExtra,
   closing,
@@ -217,6 +212,8 @@ function ModelPopover({
   closing?: boolean;
   portalContainer?: HTMLElement | null;
   disabledReason?(engine: EngineStatus): string | null;
+  /** The button that opened it, where focus returns. */
+  trigger(): HTMLElement | null | undefined;
   onPick(selection: Selection): void;
   /** Shift-click adds a model, for starting one thread on each. */
   onToggleExtra?(selection: Selection): void;
@@ -233,6 +230,16 @@ function ModelPopover({
   const [active, setActive] = useState(-1);
   const input = useRef<HTMLInputElement>(null);
   const rail = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  // Shift+Tab from the search box goes to the provider rail; everywhere else it follows the shared rule.
+  const popover = usePopover({
+    kind: "menu",
+    root: panel,
+    trigger,
+    closing,
+    defer: (event) => event.key === "Tab" && event.shiftKey && !rail.current?.contains(event.target as Node),
+    onClose,
+  });
   const jumps = useHeldMod();
 
   useLayoutEffect(() => input.current?.focus(), []);
@@ -267,8 +274,8 @@ function ModelPopover({
       if (choice.engine !== selected.engine || choice.model !== selected.model) onToggleExtra(choice);
       return;
     }
+    popover.dismiss("select");
     onPick(choice);
-    onClose();
   };
   const toggleFavorite = (row: PickerRow) => {
     const key = modelKey(row.engine, row.model.id);
@@ -279,11 +286,7 @@ function ModelPopover({
 
   const onKey = (event: React.KeyboardEvent) => {
     const mod = event.metaKey || event.ctrlKey;
-    if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      onClose();
-    } else if (mod && event.shiftKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+    if (mod && event.shiftKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
       event.preventDefault();
       const at = tabs.indexOf(tab) + (event.key === "ArrowDown" ? 1 : -1);
       const next = tabs[(at + tabs.length) % tabs.length];
@@ -330,9 +333,8 @@ function ModelPopover({
   const listed = tab === FAVORITES || searching || byEngine[tab] !== undefined;
 
   return (
-    <FloatingPanel anchor={anchor} label="Choose a model" className="model-picker" container={portalContainer} closing={closing} onClose={onClose}>
-      <div ref={rail} className="model-rail" role="toolbar" aria-label="Providers"
-        onKeyDown={(event) => { if (event.key === "Escape") onKey(event); }}>
+    <FloatingPanel anchor={anchor} label="Choose a model" className="model-picker" container={portalContainer} closing={closing} panelRef={panel}>
+      <div ref={rail} className="model-rail" role="toolbar" aria-label="Providers">
         {tabButton(FAVORITES, "Favorites", <Star size={20} fill="currentColor" aria-hidden />, false)}
         <hr />
         {engines.map((engine) => {
@@ -421,10 +423,7 @@ export function ModelPickerTrigger({
   const model = resolveModel(models, selected.model);
   const engine = engines.find((entry) => entry.id === selected.engine);
   const button = useRef<HTMLButtonElement>(null);
-  const close = useCallback(() => {
-    setAnchor(null);
-    button.current?.focus();
-  }, []);
+  const close = useCallback(() => setAnchor(null), []);
   const name = triggerLabel ?? (model ? shortModelName(model.label) : (selected.model ?? engine?.name ?? "No engine"));
 
   useCommand("modelPicker.toggle", () => {
@@ -459,6 +458,7 @@ export function ModelPickerTrigger({
           anchor={anchor}
           portalContainer={button.current?.closest("dialog")}
           disabledReason={disabledReason}
+          trigger={() => button.current}
           onPick={onPick}
           onToggleExtra={onToggleExtra}
           onClose={close}

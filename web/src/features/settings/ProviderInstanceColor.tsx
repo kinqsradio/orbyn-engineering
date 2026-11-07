@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState, type PointerEvent } from "react";
 import { Plus } from "lucide-react";
 import { Button, Field } from "../../ui/controls";
+import { usePopover } from "../../ui/usePopover";
 import { accentColor } from "./providerInstanceData";
 export interface Hsv { h: number; s: number; v: number }
 const clamp = (value: number) => Math.min(1, Math.max(0, value));
@@ -23,18 +24,17 @@ export function ProviderInstanceColor({ value, name, disabled, save }: { value: 
   const [open, setOpen] = useState(false), [hsv, setHsv] = useState<Hsv>(() => hexHsv(accentColor(value) ?? "#2563eb"));
   const [hex, setHex] = useState<string | null>(null);
   const [seen, setSeen] = useState(value), [preview, setPreview] = useState<string | null>(null);
-  const latest = useRef({ disabled, save }); latest.current = { disabled, save };
-  const restoreFocus = useRef(false);
   const dragging = useRef<{ pointer: number; color: string } | null>(null);
   if (seen !== value) { setSeen(value); setPreview(null); setHex(null); setHsv(hexHsv(accentColor(value) ?? "#2563eb")); dragging.current = null; }
-  const close = () => {
-    const pending = dragging.current; dragging.current = null;
-    if (pending && !disabled) save(pending.color);
-    restoreFocus.current = true; setOpen(false); if (!disabled) anchor.current?.querySelector("button")?.focus();
-  };
-  useLayoutEffect(() => {
-    if (!open && !disabled && restoreFocus.current) { restoreFocus.current = false; anchor.current?.querySelector("button")?.focus(); }
-  }, [open, disabled]);
+  // A drag still in progress is saved as the popup closes.
+  const popover = usePopover({
+    kind: "fields", root: popup, active: open, trigger: () => anchor.current?.querySelector("button"),
+    onClose: () => {
+      const pending = dragging.current; dragging.current = null;
+      if (pending && !disabled) save(pending.color);
+      setOpen(false);
+    },
+  });
   useLayoutEffect(() => {
     if (!open || !popup.current) return;
     const element = popup.current;
@@ -46,15 +46,8 @@ export function ProviderInstanceColor({ value, name, disabled, save }: { value: 
       element.style.top = `${Math.max(8, Math.min(button.bottom + 6 + size.height <= innerHeight - 8 ? button.bottom + 6 : button.top - size.height - 6, innerHeight - size.height - 8))}px`;
     };
     place(); element.querySelector<HTMLInputElement>("input[type=range]")?.focus();
-    const dismiss = (focus: boolean) => {
-      const pending = dragging.current; dragging.current = null;
-      if (pending && !latest.current.disabled) latest.current.save(pending.color);
-      restoreFocus.current = focus; setOpen(false); if (focus && !latest.current.disabled) anchor.current?.querySelector("button")?.focus();
-    };
-    const outside = (event: MouseEvent) => { if (event.target instanceof Node && !element.contains(event.target) && !anchor.current?.contains(event.target)) dismiss(false); };
-    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); dismiss(true); } };
-    document.addEventListener("mousedown", outside); document.addEventListener("keydown", escape, true); window.addEventListener("scroll", place, true); window.addEventListener("resize", place);
-    return () => { element.hidePopover?.(); document.removeEventListener("mousedown", outside); document.removeEventListener("keydown", escape, true); window.removeEventListener("scroll", place, true); window.removeEventListener("resize", place); };
+    window.addEventListener("scroll", place, true); window.addEventListener("resize", place);
+    return () => { element.hidePopover?.(); window.removeEventListener("scroll", place, true); window.removeEventListener("resize", place); };
   }, [open]);
   const change = (next: Hsv) => { setHsv(next); setHex(null); const color = hsvHex(next); setPreview(color); if (dragging.current) dragging.current.color = color; else save(color); };
   const point = (event: PointerEvent<HTMLDivElement>, hue: boolean) => {
@@ -75,7 +68,7 @@ export function ProviderInstanceColor({ value, name, disabled, save }: { value: 
   };
   const normalized = accentColor(preview ?? value);
   return <div className="provider-accent" ref={anchor}>
-    <Button small disabled={disabled} aria-expanded={open} aria-label={`${normalized ? "Change" : "Add"} accent color for ${name}`} onClick={() => { if (open) { close(); return; } setHsv(hexHsv(normalized ?? "#2563eb")); setHex(null); setOpen(true); }}>
+    <Button small disabled={disabled} aria-expanded={open} aria-label={`${normalized ? "Change" : "Add"} accent color for ${name}`} onClick={() => { if (open) { popover.dismiss("select"); return; } setHsv(hexHsv(normalized ?? "#2563eb")); setHex(null); setOpen(true); }}>
       {normalized ? <span className="provider-accent-swatch" style={{ backgroundColor: normalized }} aria-hidden /> : <Plus size={16} aria-hidden />}</Button>
     {open ? <div ref={popup} popover="manual" className="provider-accent-popup" role="dialog" aria-label="Accent color">
       <div className="provider-color-plane" role="group" aria-label="Accent color saturation and brightness" style={{ backgroundColor: `hsl(${hsv.h} 100% 50%)` }}
@@ -98,8 +91,8 @@ export function ProviderInstanceColor({ value, name, disabled, save }: { value: 
         <span className="provider-hue-cursor" style={{ left: `${hsv.h / 360 * 100}%` }} aria-hidden /></div>
         <Field label="Custom hex accent color">{(props) => <input {...props} disabled={disabled} spellCheck={false} value={hex ?? hsvHex(hsv)} onBlur={() => setHex(null)}
           onChange={(event) => { const next = event.target.value; setHex(next); const color = accentColor(next); if (color) { setHsv(hexHsv(color)); setPreview(color); save(color); } }} />}</Field>
-        {normalized ? <Button small disabled={disabled} onClick={() => { setPreview(""); save(""); setOpen(false); }}>Clear color</Button>
-          : <Button small disabled={disabled} onClick={() => { setPreview(hsvHex(hsv)); save(hsvHex(hsv)); setOpen(false); }}>Add color</Button>}
+        {normalized ? <Button small disabled={disabled} onClick={() => { setPreview(""); save(""); popover.dismiss("select"); }}>Clear color</Button>
+          : <Button small disabled={disabled} onClick={() => { setPreview(hsvHex(hsv)); save(hsvHex(hsv)); popover.dismiss("select"); }}>Add color</Button>}
       </div>
     </div> : null}
   </div>;
