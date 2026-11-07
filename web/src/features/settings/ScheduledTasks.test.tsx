@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import * as fixtures from "../../../mock/fixtures";
+import { api } from "../../api/client";
 import { useWorkspace } from "../../state/workspace";
 import { installMockFetch } from "../../test-support";
 import { ScheduledTasksSection } from "./ScheduledTasks";
@@ -138,6 +139,24 @@ it("shows the stored webhook address as configured, and the full address with Co
   expect(screen.getByText("Copy it now. It isn’t shown again.")).toBeVisible();
   expect(screen.getByText(/\/hooks\/task-hook\/tok\d+x9f$/)).toBeVisible();
   expect(screen.queryByRole("button", { name: "Regenerate address" })).toBeNull();
+});
+
+it("offers Create address while a webhook task has none, and Regenerate address once it does", async () => {
+  vi.spyOn(api, "taskWebhook").mockResolvedValue({ configured: false, path_prefix: "/hooks/task-hook/" });
+  const user = await openIncomingHook();
+  expect(await screen.findByText("No webhook address yet.")).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Regenerate address" })).toBeNull();
+  vi.mocked(api.taskWebhook).mockResolvedValue({ configured: true, path_prefix: "/hooks/task-hook/" });
+  await user.click(screen.getByRole("button", { name: "Create address" }));
+  expect(await screen.findByRole("button", { name: "Copy" })).toBeVisible();
+  expect(screen.getByText("Copy it now. It isn’t shown again.")).toBeVisible();
+});
+
+it("says so when a task has no runs yet", async () => {
+  vi.spyOn(api, "taskRuns").mockResolvedValue([]);
+  await openIncomingHook();
+  expect(await screen.findByText("No runs yet.")).toBeVisible();
+  expect(screen.getByText("Runs appear here after the task first runs.")).toBeVisible();
 });
 
 it("shows the two task defaults on the settings page, with Run while closed gone", async () => {

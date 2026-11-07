@@ -38,7 +38,7 @@ test("a webhook task filters, verifies, drops repeats and logs each delivery", a
   await expect(dialog).toBeHidden();
 
   await page.getByRole("button", { name: "Open On pushes" }).click();
-  await page.getByRole("button", { name: "Regenerate address" }).click();
+  await page.getByRole("button", { name: "Create address" }).click();
   const url = new URL((await page.locator("main code").first().innerText()).trim());
 
   const post = (body: string, signed = true) =>

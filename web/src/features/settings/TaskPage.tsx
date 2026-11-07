@@ -78,7 +78,7 @@ function Runs({ task }: { task: ScheduledTask }) {
         <Button small className="set-back-end" icon={<RefreshCw size={13} aria-hidden />} onClick={runs.reload}>Retry</Button></p>
     );
   }
-  if (runs.data.length === 0) return <Empty title="No runs yet" />;
+  if (runs.data.length === 0) return <Empty title="No runs yet."><p>Runs appear here after the task first runs.</p></Empty>;
   const now = Date.now();
   return (
     <>
@@ -154,7 +154,7 @@ function WebhookAddressRow({ task, offline }: { task: ScheduledTask; offline: bo
   const [issued, setIssued] = useState<WebhookEndpoint | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const regenerate = () => {
+  const issue = () => {
     setError(null);
     setBusy(true);
     api.rotateTaskWebhook(task.id).then(
@@ -175,10 +175,17 @@ function WebhookAddressRow({ task, offline }: { task: ScheduledTask; offline: bo
               <CopyOnce text={url} />
             </>
           ) : (
-            <>
-              {stored?.configured ? <code className="set-path">Configured · {stored.path_prefix}…</code> : null}
-              {address.status === "loading" ? null : <Button small busy={busy} disabled={offline} onClick={regenerate}>Regenerate address</Button>}
-            </>
+            stored === null ? null : stored.configured ? (
+              <>
+                <code className="set-path">Configured · {stored.path_prefix}…</code>
+                <Button small busy={busy} disabled={offline} onClick={issue}>Regenerate address</Button>
+              </>
+            ) : (
+              <>
+                <span className="t3">No webhook address yet.</span>
+                <Button small tone="primary" busy={busy} disabled={offline} onClick={issue}>Create address</Button>
+              </>
+            )
           )}
         </SettingRow>
       </SettingGroup>
