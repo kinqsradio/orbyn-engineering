@@ -39,7 +39,8 @@ case "$1 $2" in
   "label list") echo '[{"name":"bug","description":"Broken"}]' ;;
   "api user") echo '{"login":"me"}' ;;
   "api graphql") case "$*" in
-      *reviewRequests*) [ -f "$GH_RATE" ] && { echo "GraphQL: API rate limit already exceeded" >&2; exit 1; }
+      *reviewRequests*) [ -f "$GH_FAIL" ] && { echo "Something went wrong" >&2; exit 1; }
+        [ -f "$GH_RATE" ] && { echo "GraphQL: API rate limit already exceeded" >&2; exit 1; }
         echo '{"data":{"viewer":{"login":"me"},"repository":{"p3":{"createdAt":"2026-01-02T03:04:05Z","reviewRequests":{"nodes":[{"requestedReviewer":{"__typename":"User","login":"sam"}},{"requestedReviewer":{"__typename":"Team","slug":"core"}}]},"latestReviews":{"nodes":[{"author":null,"state":"APPROVED"},{"author":{"login":"me"},"state":"CHANGES_REQUESTED"}]},"comments":{"totalCount":2},"reviews":{"nodes":[{"comments":{"totalCount":3}},{"comments":{"totalCount":0}}]}},"p4":{"createdAt":"2026-02-02T00:00:00Z","reviewRequests":{"nodes":[]},"latestReviews":{"nodes":[]},"comments":{"totalCount":1},"reviews":{"nodes":[]}}}}}' ;;
       *) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"id":"T1","isResolved":false,"path":"a.rs","line":2,"comments":{"nodes":[{"databaseId":11,"body":"line","author":{"login":"them"}}]}}]}}}}}' ;;
     esac ;;
@@ -1002,6 +1003,35 @@ async fn details_repeats_count_once_extras_are_ignored_and_queries_are_batched()
             .all(|q| q.matches("pullRequest(").count() == 25)
     );
     assert!(log.contains("p102:") && !log.contains("p103:"));
+}
+
+#[tokio::test]
+async fn a_failed_query_keeps_the_cached_rows_and_leaves_out_the_rest() {
+    let f = fixture().await;
+    f.hosted();
+    let project = f.project().await;
+    let row = |n: u64| json!({ "project_id": project, "number": n, "updated_at": "t1" });
+    f.service
+        .send("/api/pulls/details", json!({ "pulls": [row(3)] }))
+        .await;
+    std::fs::write(f._dir.path().join("gh-fail"), "").unwrap();
+    let (code, response) = f
+        .service
+        .send("/api/pulls/details", json!({ "pulls": [row(3), row(4)] }))
+        .await;
+    assert_eq!(code, 200, "{response}");
+    let numbers: Vec<u64> = response["details"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["number"].as_u64().unwrap())
+        .collect();
+    assert_eq!(
+        numbers,
+        vec![3],
+        "the cached row stays, the asked one is absent"
+    );
+    assert_eq!(response["paused"].as_array().unwrap().len(), 0);
 }
 
 #[tokio::test]
