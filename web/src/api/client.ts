@@ -180,6 +180,12 @@ export async function attachmentBlob(id: string, signal?: AbortSignal): Promise<
 const q = encodeURIComponent;
 
 export const api = {
+  /** Whether a program path runs, and its version. Runs `--version` with no shell, for at most five seconds. */
+  probeBinary: (path: string) =>
+    request<import("../generated/BinaryProbe").BinaryProbe>("POST", "/api/engines/probe-binary", { path } satisfies import("../generated/ProbeBinary").ProbeBinary),
+  /** How many conversations an engine keeps in its own history folder. */
+  nativeSessionCount: (engineId: string, signal?: AbortSignal) =>
+    request<import("../generated/NativeSessionCount").NativeSessionCount>("GET", `/api/engines/${q(engineId)}/native-sessions/count`, undefined, signal),
   /** What Delete now, or Delete settled worktrees, would remove: counts and sizes. Changes nothing. */
   storageCleanupPreview: (signal?: AbortSignal) =>
     request<import("../generated/CleanupPreview").CleanupPreview>("GET", "/api/storage/cleanup/preview", undefined, signal),

@@ -3352,6 +3352,38 @@ pub struct EngineStatus {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub accent: Option<String>,
+    /// The signed-in account, such as an email, when the CLI's own status reports one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub account: Option<String>,
+}
+}
+
+wire! {
+pub struct ProbeBinary {
+    /// An absolute path to a program.
+    pub path: String,
+}
+}
+
+wire! {
+/// What running `--version` on a path showed.
+pub struct BinaryProbe {
+    /// A file is there and could be started.
+    pub exists: bool,
+    pub path: Option<String>,
+    pub version: Option<String>,
+    pub problem: Option<String>,
+}
+}
+
+wire! {
+/// How many conversations an engine keeps on this machine, from its own history folder.
+pub struct NativeSessionCount {
+    pub engine: String,
+    pub count: u64,
+    /// The history folder was too large to count to the end, so `count` is a floor.
+    pub truncated: bool,
 }
 }
 

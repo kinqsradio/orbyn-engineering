@@ -258,8 +258,15 @@ impl EngineDriver for ClaudeDriver {
     async fn probe(&self) -> EngineProbe {
         let mut probe = probe_cli(&self.program, &["--version"]).await;
         if probe.path.is_some() {
-            probe.auth =
-                Some(read_login(&self.program, &["auth", "status"], parse_auth_status).await);
+            let (auth, account) = read_login(
+                &self.program,
+                &["auth", "status"],
+                parse_auth_status,
+                parse_auth_account,
+            )
+            .await;
+            probe.auth = Some(auth);
+            probe.account = account;
         }
         probe.sign_in_command = Some("claude auth login".into());
         probe
@@ -865,6 +872,14 @@ fn parse_auth_status(status: i32, stdout: &str) -> orbyn_contracts::AuthState {
         Err(_) if status == 0 => AuthState::Unknown,
         Err(_) => AuthState::LoggedOut,
     }
+}
+
+/// The account `claude auth status` names, if it names one.
+fn parse_auth_account(stdout: &str) -> Option<String> {
+    let value: Value = serde_json::from_str(stdout).ok()?;
+    let email = value.get("email")?.as_str()?.trim();
+    (!email.is_empty() && email.len() <= 254 && !email.chars().any(char::is_control))
+        .then(|| email.to_owned())
 }
 
 #[derive(Clone)]
@@ -2226,6 +2241,18 @@ mod tests {
             parse_auth_status(1, text),
             orbyn_contracts::AuthState::LoggedOut
         );
+    }
+
+    #[test]
+    fn the_account_is_the_email_the_status_reports_and_only_that() {
+        let signed_in = "{\"loggedIn\":true,\"email\":\" a@example.com \",\"orgId\":\"o\"}";
+        assert_eq!(
+            parse_auth_account(signed_in).as_deref(),
+            Some("a@example.com")
+        );
+        assert_eq!(parse_auth_account("{\"loggedIn\":false}"), None);
+        assert_eq!(parse_auth_account("{\"email\":\"bad\\u0007\"}"), None);
+        assert_eq!(parse_auth_account("not json"), None);
     }
 
     #[test]

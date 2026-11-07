@@ -437,6 +437,10 @@ fn router(state: AppState) -> Router {
             get(api::native_session_capabilities),
         )
         .route(
+            "/api/engines/{id}/native-sessions/count",
+            get(api::native_session_count),
+        )
+        .route(
             "/api/engines/{id}/native-sessions",
             get(api::list_native_sessions),
         )
@@ -668,6 +672,7 @@ fn router(state: AppState) -> Router {
         .route("/api/threads/{id}/diff", get(api::thread_diff))
         .route("/api/engines", get(api::list_engines))
         .route("/api/engines/refresh", post(api::refresh_engines))
+        .route("/api/engines/probe-binary", post(api::probe_engine_binary))
         .route("/api/engines/custom", post(api::add_custom_engine))
         .route(
             "/api/engines/custom/{id}",

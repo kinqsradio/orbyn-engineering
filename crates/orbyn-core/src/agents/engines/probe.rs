@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 
-use orbyn_contracts::AuthState;
+use orbyn_contracts::{AuthState, BinaryProbe};
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 
@@ -13,6 +13,7 @@ use super::super::driver::EngineProbe;
 use crate::host::process::{ResolvedCommand, resolve};
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+const BINARY_TIMEOUT: Duration = Duration::from_secs(5);
 /// A status command has no reason to print more than this.
 const MAX_CAPTURE: u64 = 256 * 1024;
 
@@ -91,22 +92,60 @@ pub(crate) async fn probe_cli(program: &str, version_args: &[&str]) -> EnginePro
     probe
 }
 
+/// The login state and, when the CLI's status names one, the account.
 pub(crate) async fn read_login(
     program: &str,
     args: &[&str],
     parse: fn(i32, &str) -> AuthState,
-) -> AuthState {
+    account: fn(&str) -> Option<String>,
+) -> (AuthState, Option<String>) {
     let Some(command) = resolve(program) else {
-        return AuthState::Unknown;
+        return (AuthState::Unknown, None);
     };
     match capture(&command, args, PROBE_TIMEOUT).await {
         // Some CLIs print their login line on stderr.
-        Some(output) => parse(
-            output.status,
-            &format!("{}{}", output.stdout, output.stderr),
-        ),
-        None => AuthState::Unknown,
+        Some(output) => {
+            let text = format!("{}{}", output.stdout, output.stderr);
+            (parse(output.status, &text), account(&text))
+        }
+        None => (AuthState::Unknown, None),
     }
+}
+
+/// Runs `--version` on an absolute path and reports what it printed. No shell is
+/// involved, the argument is fixed, and the run ends after a few seconds.
+pub async fn probe_binary(path: &str) -> BinaryProbe {
+    let missing = BinaryProbe {
+        exists: false,
+        path: None,
+        version: None,
+        problem: None,
+    };
+    if !Path::new(path).is_absolute() {
+        return BinaryProbe {
+            problem: Some("Give the full path to the program.".into()),
+            ..missing
+        };
+    }
+    let Some(command) = resolve(path) else {
+        return missing;
+    };
+    let mut found = BinaryProbe {
+        exists: true,
+        path: Some(command.path.to_string_lossy().into_owned()),
+        ..missing
+    };
+    match capture(&command, &["--version"], BINARY_TIMEOUT).await {
+        Some(output) if output.status == 0 => {
+            found.version = parse_version(&output.stdout);
+            if found.version.is_none() {
+                found.problem = Some("It ran, but printed no version.".into());
+            }
+        }
+        Some(_) => found.problem = Some("Its version command failed.".into()),
+        None => found.problem = Some("It did not start or did not answer in time.".into()),
+    }
+    found
 }
 
 /// The first dotted number in a version line, such as `2.1.150 (Claude Code)`
@@ -142,5 +181,30 @@ mod tests {
             Some("0.166.0")
         );
         assert_eq!(parse_version("no version here"), None);
+    }
+
+    #[tokio::test]
+    async fn a_program_path_reports_its_version() {
+        // Cargo sets CARGO for the tests it runs, and `cargo --version` is a real program.
+        let cargo = std::env::var("CARGO").expect("run by cargo");
+        let found = probe_binary(&cargo).await;
+        assert!(found.exists, "{found:?}");
+        assert!(found.version.is_some(), "{found:?}");
+        assert!(found.problem.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_path_that_is_missing_relative_or_a_folder_is_not_run() {
+        let missing = probe_binary(
+            &std::env::temp_dir()
+                .join("orbyn-no-such-program")
+                .to_string_lossy(),
+        )
+        .await;
+        assert!(!missing.exists && missing.problem.is_none());
+        let folder = probe_binary(&std::env::temp_dir().to_string_lossy()).await;
+        assert!(!folder.exists);
+        let relative = probe_binary("cargo").await;
+        assert!(!relative.exists && relative.problem.is_some());
     }
 }

@@ -30,4 +30,8 @@ instance_of?: string,
 /**
  * A color for telling instances apart.
  */
-accent?: string, };
+accent?: string, 
+/**
+ * The signed-in account, such as an email, when the CLI's own status reports one.
+ */
+account?: string, };

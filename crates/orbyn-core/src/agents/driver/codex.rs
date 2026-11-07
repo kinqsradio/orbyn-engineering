@@ -117,7 +117,11 @@ impl EngineDriver for CodexDriver {
     async fn probe(&self) -> EngineProbe {
         let mut probe = probe_cli(&self.program, &["--version"]).await;
         if probe.path.is_some() {
-            probe.auth = Some(read_login(&self.program, &["login", "status"], parse_login).await);
+            // Codex names the sign-in method, not the account.
+            let (auth, account) =
+                read_login(&self.program, &["login", "status"], parse_login, |_| None).await;
+            probe.auth = Some(auth);
+            probe.account = account;
         }
         probe.sign_in_command = Some("codex login".into());
         probe

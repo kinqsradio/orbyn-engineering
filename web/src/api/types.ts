@@ -154,6 +154,8 @@ export type Diagnostics = Wired<DiagnosticsWire>;
 export type ScheduledTask = Wired<ScheduledTaskWire>;
 export type { WebhookDelivery } from "../generated/WebhookDelivery";
 export type { WebhookEndpoint } from "../generated/WebhookEndpoint";
+export type { BinaryProbe } from "../generated/BinaryProbe";
+export type { NativeSessionCount } from "../generated/NativeSessionCount";
 export type { CleanupPreview } from "../generated/CleanupPreview";
 export type { WebhookAddress } from "../generated/WebhookAddress";
 export type { TaskRun } from "../generated/TaskRun";

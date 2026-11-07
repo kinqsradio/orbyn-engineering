@@ -1379,6 +1379,21 @@ pub async fn native_session_capabilities(
     Ok(Json(state.core.native_session_capabilities(&id).await?))
 }
 
+pub async fn native_session_count(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.native_session_count(&id)?))
+}
+
+pub async fn probe_engine_binary(
+    ApiJson(body): ApiJson<orbyn_contracts::ProbeBinary>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(
+        orbyn_core::agents::engines::probe::probe_binary(&body.path).await,
+    ))
+}
+
 pub async fn list_native_sessions(
     State(state): State<AppState>,
     Path(id): Path<String>,

@@ -2674,7 +2674,9 @@ because browsers cannot set headers on them.
 | `PATCH, DELETE /api/threads/:id/terminals/:terminal` | Rename, close |
 | `GET, DELETE /api/threads/:id/terminals/:terminal/scrollback` | `TerminalScrollback`; clear |
 | `GET, POST /api/threads/:id/scripts` | `ProjectFileView`; `RunScript` to `TerminalInfo` |
-| `GET /api/engines`, `POST /api/engines/refresh` | `EngineStatus[]` |
+| `GET /api/engines`, `POST /api/engines/refresh` | `EngineStatus[]`; `account` is the signed-in account when the CLI's own status names one (Claude's email; Codex names none) |
+| `POST /api/engines/probe-binary` | `ProbeBinary` `{path}` to `BinaryProbe`: whether an absolute path is a runnable file and the version `--version` printed. No shell, fixed argument, 5 second limit; a relative path is refused with a `problem` |
+| `GET /api/engines/:id/native-sessions/count` | `NativeSessionCount`: conversation files in the engine's own history folder (`claude`, `codex`); counted, never opened; `422 unsupported` for other engines |
 | `POST /api/engines/:id/update` | Run the owning installer (`409 engine_busy`) |
 | `GET /api/engines/update-events` | SSE `EngineUpdateProgress` while an engine update runs |
 | `POST, DELETE /api/engines/custom[/:id]` | ACP, AG-UI and terminal engines |
