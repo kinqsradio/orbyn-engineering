@@ -266,7 +266,7 @@ it("links Edit to the task and Manage to the section", async () => {
   installMockFetch();
   render(<ThreadAutomations threadId="t-approval" />);
   await user.click(await screen.findByRole("button", { name: "Edit Daily review" }));
-  expect(window.location.hash).toBe("#/settings/tasks?task=task-review");
+  expect(window.location.hash).toBe("#/settings/tasks?task=task-review&edit=1");
   await user.click(screen.getByRole("button", { name: "Manage scheduled tasks" }));
   expect(window.location.hash).toBe("#/settings/tasks");
 });
