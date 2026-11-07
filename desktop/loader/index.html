@@ -20,8 +20,11 @@
         animation: turn .9s linear infinite; }
       @keyframes turn { to { transform: rotate(360deg); } }
       @media (prefers-reduced-motion: reduce) { .ring { animation: none; } }
-      button { height: 30px; padding: 0 13px; margin-top: 6px; border: 0; border-radius: 9px; background: var(--button); color: var(--button-text);
+      .actions { display: flex; gap: 8px; margin-top: 6px; }
+      button { height: 30px; padding: 0 13px; border: 0; border-radius: 9px; background: var(--button); color: var(--button-text);
         font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; }
+      button.ghost { background: transparent; color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
+      button:focus-visible { outline: 2px solid var(--muted); outline-offset: 2px; }
       button:disabled { opacity: .45; cursor: default; }
       [hidden] { display: none; }
     </style>
@@ -31,34 +34,52 @@
       <i id="ring" class="ring" aria-hidden="true"></i>
       <h1 id="title">Starting Orbyn…</h1>
       <p id="detail" hidden></p>
-      <button id="retry" hidden>Try again</button>
+      <div id="actions" class="actions" hidden>
+        <button id="log" class="ghost">Show log</button>
+        <button id="retry">Try again</button>
+        <button id="quit" class="ghost">Quit</button>
+      </div>
     </main>
     <script>
       const query = new URLSearchParams(location.search);
-      const failure = query.get("error");
+      const state = query.get("state");
       const show = (title, detail) => {
         document.getElementById("title").textContent = title;
         const line = document.getElementById("detail");
         line.textContent = detail || "";
         line.hidden = !detail;
       };
-      if (query.get("state") === "restarting") {
+      // Every command takes no argument: the shell decides what each one does.
+      const command = (button, name) => button.addEventListener("click", () => {
+        button.disabled = true;
+        window.__TAURI_INTERNALS__.invoke(name).catch(() => {
+          button.disabled = false;
+        }).then(() => {
+          // Show log and Quit leave this page in place, so they can be used again.
+          if (name === "show_core_log") button.disabled = false;
+        });
+      });
+      if (state === "restarting") {
         show("Restarting the service…", "Orbyn restarts the service once on its own.");
-      } else if (failure) {
+      } else if (state === "failed" || state === "repeated") {
         document.getElementById("ring").hidden = true;
-        if (failure.startsWith("It restarted once and stopped again")) {
+        if (state === "repeated") {
           show("Orbyn restarted once and stopped again", "The service keeps stopping, so Orbyn can’t open.");
         } else {
-          show("The local service stopped", failure + " Your threads are saved. Interrupted runs stay in their thread.");
+          show("Orbyn couldn’t start", "The service didn’t start.");
+          // The shell sends one short line, already stripped of paths. It is shown as text.
+          const reason = query.get("reason");
+          if (reason) {
+            const line = document.createElement("p");
+            line.textContent = reason;
+            line.style.fontSize = "12.5px";
+            document.getElementById("detail").after(line);
+          }
         }
-        const retry = document.getElementById("retry");
-        retry.hidden = false;
-        retry.addEventListener("click", () => {
-          retry.disabled = true;
-          window.__TAURI_INTERNALS__.invoke("restart_core").catch(() => {
-            retry.disabled = false;
-          });
-        });
+        document.getElementById("actions").hidden = false;
+        command(document.getElementById("log"), "show_core_log");
+        command(document.getElementById("retry"), "restart_core");
+        command(document.getElementById("quit"), "quit_core");
       }
     </script>
   </body>

@@ -1,12 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
-  "description": "The static startup document can retry its service. The command also checks its separate origin; the product asset origin cannot invoke it.",
+  "description": "The static startup document can retry its service, show its log and quit. Each command also checks its separate origin; the product asset origin cannot invoke them.",
   "windows": [
     "main"
   ],
   "local": true,
   "permissions": [
-    "allow-restart-core"
+    "allow-restart-core",
+    "allow-show-core-log",
+    "allow-quit-core"
   ]
 }
