@@ -324,3 +324,16 @@ export async function projectSettingsUrl(service: Service, projectId: string, se
   if (!group) throw new Error("Fixture project is missing from its settings catalog");
   return `${service.page}#/settings/${section}?project=${encodeURIComponent(group.key)}&checkout=${encodeURIComponent(projectId)}`;
 }
+
+/**
+ * Opens the thread's Details card and returns it. The card is a popover under the Details button while the side
+ * panel is closed and sits at the top of the panel while it is open; either way the button shows whether it is on.
+ */
+export async function openDetails(page: Page) {
+  const toggle = page.getByRole("button", { name: "Details", exact: true });
+  await expect(toggle).toBeVisible();
+  if ((await toggle.getAttribute("aria-pressed")) !== "true") await toggle.click();
+  const card = page.getByRole("complementary", { name: "Thread details" });
+  await expect(card).toBeVisible();
+  return card;
+}
