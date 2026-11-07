@@ -1,6 +1,5 @@
-import { Download, FolderPlus } from "lucide-react";
+import { Download, Folder } from "lucide-react";
 import { useEffect } from "react";
-import { navigate } from "../../state/route";
 import { useUi } from "../../state/ui";
 import { Button } from "../../ui/controls";
 import { SkillsNotice } from "./SkillsNotice";
@@ -21,17 +20,11 @@ export function NoProjects() {
       </h1>
       <p>Point Orbyn at a folder with code. Agents work in it in place.</p>
       <div className="no-projects-actions">
-        <Button small icon={<Download size={16} aria-hidden />} onClick={() => setPalette("add-project-url")}>
+        <Button small icon={<Download size={13} aria-hidden />} onClick={() => setPalette("add-project-url")}>
           Clone from GitHub
         </Button>
-        <Button tone="primary" small icon={<FolderPlus size={16} aria-hidden />} onClick={() => setPalette("add-project")}>
-          Add project
-        </Button>
-        <Button small onClick={() => navigate({ name: "new", projectId: "scratch" })}>
-          Start without a project
-        </Button>
-        <Button small tone="quiet" onClick={() => setWelcomeStep(0)}>
-          Welcome steps
+        <Button tone="primary" small icon={<Folder size={13} aria-hidden />} onClick={() => setPalette("add-project")}>
+          Add a folder
         </Button>
       </div>
       <SkillsNotice />

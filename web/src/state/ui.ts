@@ -7,6 +7,9 @@ import { useWorkspace } from "./workspace";
 
 export type ThemeChoice = "system" | "light" | "dark";
 /** How the workspace is arranged: by project, by what needs you, or as one reading column. */
+/** What a toast leads with: a thread needs you, finished or failed, or a copy was made. Others are text only. */
+export type ToastKind = "needs" | "done" | "failed" | "copied";
+
 export type LayoutChoice = "console" | "ledger" | "reading";
 export const LAYOUT_CHOICES: readonly LayoutChoice[] = ["console", "ledger", "reading"];
 export type RightTab = "diff" | "files" | "activity" | "pulls" | "browser" | "side";
@@ -249,8 +252,8 @@ interface UiState extends Prefs {
   palette: PaletteStart | null;
   setPalette(palette: PaletteStart | null): void;
   lastThreadId: string | null;
-  toasts: { id: number; text: string }[];
-  pushToast(text: string): void;
+  toasts: { id: number; text: string; kind?: ToastKind }[];
+  pushToast(text: string, kind?: ToastKind): void;
   dismissToast(id: number): void;
   /** The open welcome step, or null; not saved, so it lasts while the app runs. */
   welcomeStep: number | null;
@@ -487,9 +490,9 @@ export const useUi = create<UiState>((set, get) => {
     },
     lastThreadId: null,
     toasts: [],
-    pushToast(text) {
+    pushToast(text, kind) {
       const id = ++toastCounter;
-      set((state) => ({ toasts: [...state.toasts, { id, text }] }));
+      set((state) => ({ toasts: [...state.toasts, { id, text, kind }] }));
       setTimeout(() => get().dismissToast(id), TOAST_MS);
     },
     dismissToast(id) {

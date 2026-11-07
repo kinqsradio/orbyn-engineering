@@ -1,4 +1,4 @@
-import { PanelLeft } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileDiff, PanelLeft } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { inDesktopApp, onShellChange, readShellStatus } from "../api/shell";
@@ -12,7 +12,7 @@ import { usePageLabel } from "../state/pageLabel";
 import { useReadingNav } from "./readingNav";
 import { useUi } from "../state/ui";
 import { useWorkspace } from "../state/workspace";
-import { IconButton } from "../ui/controls";
+import { goBack, goForward, useNavHistory } from "./navHistory";
 
 /** True in the desktop app on macOS, where the window's traffic lights sit over the title bar. */
 function useTrafficLights(): boolean {
@@ -66,6 +66,7 @@ function ReadingDiff({ threadId }: { threadId: string }) {
   const removed = files.reduce((sum, file) => sum + file.deletions, 0);
   return (
     <button type="button" className="titlebar-diff" aria-pressed={showing} onClick={() => (showing ? closePanel() : togglePanel("diff"))}>
+      <FileDiff size={13} aria-hidden />
       Diff <span className="diff-add">+{added}</span> <span className="diff-del">−{removed}</span>
     </button>
   );
@@ -108,25 +109,36 @@ export function TitleBar({ route, narrow }: { route: Route; narrow: boolean }) {
     wasShown.current = shown;
   }, [shown]);
 
+  const trail = useNavHistory();
+  const sidebarLabel = shown ? "Hide sidebar" : "Show sidebar";
+
   return (
-    <header className="titlebar" data-tauri-drag-region>
+    <header className="titlebar" data-nav={shown ? "shown" : "hidden"} data-tauri-drag-region>
       {lights ? <span className="titlebar-lights" aria-hidden /> : null}
       {narrow ? null : (
-        <IconButton
-          label={shown ? "Collapse sidebar" : "Expand sidebar"}
+        <button
+          type="button"
+          className="tbi"
+          aria-label={sidebarLabel}
           aria-expanded={shown}
           data-sidebar-toggle
           onClick={reading ? toggleReadingNav : toggleSidebar}
         >
           <PanelLeft size={16} aria-hidden />
-        </IconButton>
+        </button>
       )}
-      <a className="titlebar-brand" href={routeHref({ name: "home" })} title="Orbyn Engineering">
-        Orbyn
-      </a>
-      <span className="titlebar-page">
-        <span className="titlebar-page-label">{page}</span>
-      </span>
+      <button type="button" className="tbi" aria-label="Back" aria-disabled={!trail.back} data-dim={!trail.back || undefined} onClick={() => trail.back && goBack()}>
+        <ChevronLeft size={16} aria-hidden />
+      </button>
+      <button type="button" className="tbi" aria-label="Forward" aria-disabled={!trail.forward} data-dim={!trail.forward || undefined} onClick={() => trail.forward && goForward()}>
+        <ChevronRight size={16} aria-hidden />
+      </button>
+      {shown ? null : (
+        <a className="titlebar-title" href={routeHref({ name: "home" })} title="Orbyn Engineering">
+          <b>Orbyn</b>
+          <span className="titlebar-page-label"> · {page}</span>
+        </a>
+      )}
       <span className="titlebar-end">
         <EnvironmentIdentity />
         {reading && route.name === "thread" ? <ReadingDiff threadId={route.id} /> : null}

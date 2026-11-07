@@ -26,6 +26,21 @@ describe("App against the mock API", () => {
     expect(within(nav).queryByRole("link", { name: /Approvals/ })).toBeNull();
   });
 
+  it("heads a thread with Terminal then Show side panel, each pressed while its panel is open", async () => {
+    const user = userEvent.setup();
+    useUi.setState({ panelOpen: false, terminalOpen: false });
+    go("#/threads/t-approval");
+    render(<App />);
+    const terminal = await screen.findByRole("button", { name: "Terminal" });
+    const side = screen.getByRole("button", { name: "Show side panel" });
+    expect(terminal.compareDocumentPosition(side) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(side).toHaveAttribute("aria-pressed", "false");
+    await user.click(terminal);
+    expect(useUi.getState().terminalOpen).toBe(true);
+    await user.click(side);
+    expect(useUi.getState().panelOpen).toBe(true);
+  });
+
   it("creates the thread on first send from the draft", async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -98,17 +113,15 @@ describe("App against the mock API", () => {
       expect(screen.queryByRole("button", { name: /updates? available/ })).toBeNull();
     });
 
-    it("lists versions, commits and notes, and disables with the reason", async () => {
+    it("lists each item with its versions and kind, and disables with the reason", async () => {
       const user = userEvent.setup();
       render(<App />);
       const dialog = await openDialog(user);
       expect(within(dialog).getByText("Claude Code")).toBeInTheDocument();
       expect(within(dialog).getByText("2.1.14 → 2.1.20")).toBeInTheDocument();
-      expect(within(dialog).getByText("Add statechart review guidance")).toBeInTheDocument();
-      expect(within(dialog).getByText("Faster thread loading")).toBeInTheDocument();
+      expect(within(dialog).getByText("Restarts the app")).toBeInTheDocument();
       expect(within(dialog).getByText(/runs are active/)).toBeInTheDocument();
-      expect(within(dialog).getByRole("button", { name: "Update all" })).toBeDisabled();
-      expect(within(dialog).getByRole("button", { name: "Update app" })).toBeDisabled();
+      expect(within(dialog).getByRole("button", { name: "Update everything" })).toBeDisabled();
     });
 
     it("runs in order, stops at the first failure and retries", async () => {
@@ -117,7 +130,7 @@ describe("App against the mock API", () => {
       const user = userEvent.setup();
       render(<App />);
       const dialog = await openDialog(user);
-      await user.click(within(dialog).getByRole("button", { name: "Update all" }));
+      await user.click(within(dialog).getByRole("button", { name: "Update everything" }));
       expect(await within(dialog).findByText(/exited with status 1/, {}, { timeout: 3000 })).toBeInTheDocument();
       const steps = within(dialog).getByRole("list", { name: "Update progress" }).querySelectorAll("li");
       expect([...steps].map((step) => step.getAttribute("data-state"))).toEqual(["done", "failed", "pending"]);
@@ -139,7 +152,7 @@ describe("App against the mock API", () => {
       await user.click(await screen.findByRole("button", { name: "Updates available · 2" }));
       const dialog = await screen.findByRole("dialog", { name: "Update everything" });
       expect(within(dialog).getByText(/Replace the orbynd binary/)).toBeInTheDocument();
-      expect(within(dialog).queryByRole("button", { name: "Update app" })).toBeNull();
+      expect(within(dialog).queryByRole("button", { name: "Update everything" })).toBeDisabled();
     });
 
     it("checks from Settings without applying anything", async () => {
@@ -169,7 +182,7 @@ describe("App against the mock API", () => {
     const user = userEvent.setup();
     render(<App />);
     expect(await screen.findByRole("heading", { name: "Add your first project" })).toBeInTheDocument();
-    await user.click(screen.getAllByRole("button", { name: "Add project" }).at(-1)!);
+    await user.click(screen.getByRole("button", { name: "Add a folder" }));
     const palette = await screen.findByRole("dialog", { name: "Command palette" });
     await user.click(within(palette).getByRole("button", { name: /Local folder/ }));
     const field = await within(palette).findByLabelText("Folder path");
@@ -177,7 +190,7 @@ describe("App against the mock API", () => {
     await user.type(field, "/Users/dev/code/payments-service{Enter}");
 
     expect(await screen.findByRole("heading", { name: /^Trust .+\?$/ })).toBeInTheDocument();
-    expect(screen.getByText(/execute this repository's hooks/)).toBeInTheDocument();
+    expect(screen.getByText(/Only trust folders you know/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Trust folder" }));
 
     expect(await screen.findByRole("heading", { name: /What should we build in/ })).toBeInTheDocument();

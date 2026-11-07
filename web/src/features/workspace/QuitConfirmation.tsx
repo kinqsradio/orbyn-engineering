@@ -96,14 +96,14 @@ export function QuitConfirmation() {
     working > 0
       ? `${working} ${working === 1 ? "agent is" : "agents are"} working.`
       : null;
+  const hint = `${note ? `${note} ` : ""}Or press ⌘Q again.`;
   return (
     <div className="quit-overlay" role="status" aria-live="assertive">
       <kbd className="quit-key">⌘ Q</kbd>
       {prompt === "hold" ? (
         <>
           <b>Hold to quit</b>
-          {/* A second press during a hold does nothing, so the hold prompt offers no shortcut. */}
-          {note ? <span className="quit-note">{note}</span> : null}
+          <span className="quit-note">{hint}</span>
           <span
             ref={bar}
             className="quit-progress"

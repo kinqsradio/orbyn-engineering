@@ -5,10 +5,9 @@ import {
   Files,
   GitPullRequest,
   Maximize2,
+  Minimize2,
   MessagesSquare,
   MoreHorizontal,
-  PanelBottom,
-  PanelRight,
   SquareTerminal,
   ArrowLeft,
   CloudOff,
@@ -188,7 +187,6 @@ export function SurfacePane({
   const tab = useUi((state) => state.panelTab);
   const toggle = useUi((state) => state.togglePanel);
   const showLauncher = useUi((state) => state.showLauncher);
-  const terminalOpen = useUi((state) => state.terminalOpen);
   const width = useUi((state) => state.panelWidth);
 
   // The tab the list was opened from, for Escape to return to.
@@ -302,13 +300,10 @@ export function SurfacePane({
             </IconButton>
           ) : null}
           {overlay ? null : (
-            <IconButton label={maximized ? "Restore side panel" : "Maximize pane"} onClick={onToggleMaximize}>
-              {maximized ? <PanelRight size={16} aria-hidden /> : <Maximize2 size={16} aria-hidden />}
+            <IconButton label={maximized ? "Restore side panel" : "Maximise panel"} onClick={onToggleMaximize}>
+              {maximized ? <Minimize2 size={16} aria-hidden /> : <Maximize2 size={16} aria-hidden />}
             </IconButton>
           )}
-          <IconButton label="Terminal" pressed={terminalOpen} onClick={() => toggle("terminal")}>
-            <PanelBottom size={16} aria-hidden />
-          </IconButton>
           <IconButton label="Close side panel" onClick={onReturn}>
             <X size={16} aria-hidden />
           </IconButton>

@@ -53,7 +53,7 @@ describe("design tokens", () => {
 
   it("keeps the hold-to-quit fill linear under reduced motion", () => {
     const shell = css["shell.css"] ?? "";
-    expect(shell).toMatch(/\.quit-progress\[data-holding\] \{\s*width: 100%;\s*transition: width var\(--hold-ms\) linear;/);
+    expect(shell).toMatch(/\.quit-progress\[data-holding\]::after \{\s*width: 100%;\s*transition: width var\(--hold-ms\) linear;/);
     const reduced = shell.slice(shell.indexOf("@media (prefers-reduced-motion: reduce)", shell.indexOf(".quit-progress")));
     expect(reduced).toContain("transition-timing-function: linear !important;");
   });

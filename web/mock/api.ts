@@ -413,6 +413,14 @@ export function createMockApi(options: MockOptions = {}) {
       if (seg[5] === "stack") return { status: 200, body: { layers: [], position: 0 } };
     }
 
+    // The pull requests linked to a thread, and a refresh of them: arrays, as the side panel maps them.
+    if (method === "GET" && seg[1] === "threads" && seg[3] === "pulls" && !seg[4]) {
+      return { status: 200, body: fixtures.pulls().map((entry) => entry.pull) };
+    }
+    if (method === "POST" && seg[1] === "threads" && seg[3] === "pulls" && seg[4] === "refresh") {
+      return { status: 200, body: fixtures.pulls().map((entry) => entry.pull) };
+    }
+
     switch (key) {
       case "GET /api/source-control":
         if (seg[2] === "repository-star") return { status: 200, body: { starred: true } };

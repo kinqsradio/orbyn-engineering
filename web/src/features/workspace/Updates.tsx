@@ -1,8 +1,6 @@
 import { AlertCircle, Check, CircleDashed, Download, Loader2, X } from "lucide-react";
 import { useState } from "react";
-import { api } from "../../api/client";
 import type { UpdateStatus } from "../../api/types";
-import { toFailure } from "../../lib/useAsync";
 import { useUi } from "../../state/ui";
 import {
   appHasUpdate,
@@ -13,7 +11,6 @@ import {
 } from "../../state/workspace";
 import { Button } from "../../ui/controls";
 import { Dialog } from "../../ui/Dialog";
-import { Markdown } from "../thread/Markdown";
 
 const short = (value: string | null) =>
   value && /^[0-9a-f]{12,}$/.test(value) ? value.slice(0, 8) : (value ?? "Unknown");
@@ -42,43 +39,6 @@ function Versions({ current, latest }: { current: string | null; latest: string 
     <span className="update-versions">
       {short(current)} → {short(latest)}
     </span>
-  );
-}
-
-function ItemButton({
-  label,
-  disabled,
-  onApply,
-}: {
-  label: string;
-  disabled: boolean;
-  onApply(): Promise<void>;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  return (
-    <>
-      <Button
-        small
-        aria-label={`Update ${label}`}
-        busy={busy}
-        disabled={disabled}
-        onClick={() => {
-          setBusy(true);
-          setError(null);
-          onApply()
-            .catch((failure: unknown) => setError(toFailure(failure).message))
-            .finally(() => setBusy(false));
-        }}
-      >
-        Update
-      </Button>
-      {error ? (
-        <p className="field-error" role="alert">
-          {error}
-        </p>
-      ) : null}
-    </>
   );
 }
 
@@ -114,9 +74,6 @@ export function UpdateEverythingDialog({ onClose }: { onClose(): void }) {
   const run = useWorkspace((state) => state.updateRun);
   const engineList = useWorkspace((state) => state.engines.data);
   const runAllUpdates = useWorkspace((state) => state.runAllUpdates);
-  const refreshUpdates = useWorkspace((state) => state.refreshUpdates);
-  const refreshEngines = useWorkspace((state) => state.refreshEngines);
-  const refreshManaged = useWorkspace((state) => state.refreshManaged);
 
   if (!status) return null;
   const applying = run?.running === true;
@@ -127,26 +84,43 @@ export function UpdateEverythingDialog({ onClose }: { onClose(): void }) {
   const engines = status.engines.filter(engineHasUpdate);
   const appAvailable = appHasUpdate(status);
 
+  const rows: { key: string; name: string; current: string | null; latest: string | null; kind: string }[] = [
+    ...(appAvailable
+      ? [{ key: "app", name: "Orbyn Engineering", current: status.app.current, latest: status.app.latest, kind: "Restarts the app" }]
+      : []),
+    ...engines.map((engine) => ({
+      key: engine.id,
+      name: engineList?.find((e) => e.id === engine.id)?.name ?? engine.id,
+      current: engine.current,
+      latest: engine.latest,
+      kind: "CLI",
+    })),
+    ...(status.library.behind > 0
+      ? [{ key: "library", name: "Skills library", current: status.library.current, latest: status.library.latest, kind: "Library" }]
+      : []),
+  ];
+
   return (
     <Dialog
       title="Update everything"
       onClose={onClose}
+      className="update-dialog"
       footer={
         <>
-          <Button onClick={onClose}>Close</Button>
+          <Button onClick={onClose}>Not now</Button>
           <Button
             tone="primary"
             busy={applying}
             disabled={locked || (count === 0 && !failed)}
             onClick={() => void runAllUpdates()}
           >
-            {failed ? "Retry" : "Update all"}
+            {failed ? "Retry" : "Update everything"}
           </Button>
         </>
       }
     >
       <p className="update-intro">
-        Updates install one at a time. An agent with a run in progress updates once that run ends.
+        Updates install one at a time; a running agent keeps going and picks up its CLI next turn.
       </p>
       {blocked ? <p className="update-reason">{blocked}</p> : null}
       {run ? <Steps steps={run.steps} /> : null}
@@ -155,83 +129,22 @@ export function UpdateEverythingDialog({ onClose }: { onClose(): void }) {
           {run.error}
         </p>
       ) : null}
-      {engines.length > 0 ? (
-        <section className="update-group">
-          <h3>Engines</h3>
-          {engines.map((engine) => {
-            const name = engineList?.find((e) => e.id === engine.id)?.name ?? engine.id;
-            return (
-              <div key={engine.id} className="update-item">
-                <span className="update-name">{name}</span>
-                <Versions current={engine.current} latest={engine.latest} />
-                <span className="update-kind">CLI</span>
-                {engine.can_apply ? (
-                  <ItemButton
-                    label={name}
-                    disabled={locked}
-                    onApply={async () => {
-                      await api.updateEngine(engine.id);
-                      await Promise.all([refreshUpdates(), refreshEngines()]);
-                    }}
-                  />
-                ) : null}
-              </div>
-            );
-          })}
-        </section>
-      ) : null}
-      {status.library.behind > 0 ? (
-        <section className="update-group">
-          <h3>Skills library</h3>
-          <div className="update-item">
-            <span className="update-name">Library</span>
-            <Versions current={status.library.current} latest={status.library.latest} />
-            <ItemButton
-              label="skills library"
-              disabled={locked || !status.library.can_apply}
-              onApply={async () => {
-                await api.updateLibrary(true);
-                await Promise.all([refreshUpdates(), refreshManaged()]);
-              }}
-            />
-          </div>
-          <ul className="commit-list">
-            {status.library.incoming.map((commit) => (
-              <li key={commit.sha}>
-                <code>{short(commit.sha)}</code>
-                <span>{commit.subject}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-      {appAvailable ? (
-        <section className="update-group">
-          <h3>App</h3>
-          <div className="update-item">
-            <span className="update-name">Orbyn Engineering</span>
-            <Versions current={status.app.current} latest={status.app.latest} />
-            <span className="update-kind">Restarts the app</span>
-            {status.app.can_apply ? (
-              <ItemButton
-                label="app"
-                disabled={locked}
-                onApply={async () => {
-                  await api.applyAppUpdate();
-                  await refreshUpdates();
-                }}
-              />
-            ) : null}
-          </div>
-          {status.app.notes ? (
-            <div className="update-notes">
-              <Markdown text={status.app.notes} />
+      {rows.length > 0 ? (
+        <div className="update-table" role="list">
+          {rows.map((row) => (
+            <div key={row.key} className="update-item" role="listitem">
+              <span>
+                <b className="update-name">{row.name}</b>
+                <br />
+                <Versions current={row.current} latest={row.latest} />
+              </span>
+              <span className="update-kind">{row.kind}</span>
             </div>
-          ) : null}
-          {status.app.mode === "server" && status.app.blocked_reason ? (
-            <p className="muted">{status.app.blocked_reason}</p>
-          ) : null}
-        </section>
+          ))}
+        </div>
+      ) : null}
+      {status.app.mode === "server" && appAvailable && status.app.blocked_reason ? (
+        <p className="update-reason">{status.app.blocked_reason}</p>
       ) : null}
       {count === 0 && !run && !appAvailable ? <p>Everything is up to date.</p> : null}
     </Dialog>

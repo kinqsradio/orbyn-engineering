@@ -546,7 +546,6 @@ input[type="checkbox"][role="switch"]:disabled {
 }
 .dialog::backdrop {
   background: var(--color-backdrop);
-  backdrop-filter: blur(4px);
   transition: opacity var(--m-base);
 }
 .dialog {
@@ -568,7 +567,7 @@ input[type="checkbox"][role="switch"]:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 16px 14px 4px 22px;
+  padding: 20px 22px 0;
 }
 .dialog-head h2 {
   font-size: 16px;
@@ -579,7 +578,7 @@ input[type="checkbox"][role="switch"]:disabled {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 0 22px 16px;
+  padding: 12px 22px 0;
   overflow: auto;
   color: var(--color-muted);
   overflow-wrap: anywhere;
@@ -589,12 +588,15 @@ input[type="checkbox"][role="switch"]:disabled {
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 6px;
-  padding: 4px 22px 20px;
+  padding: 12px 22px 20px;
 }
 /* Dialog actions: Cancel is a quiet ghost, the confirm is solid, only danger is red. */
 .dialog-foot .btn {
+  min-height: 30px;
+  padding: 0 12px;
   border-color: transparent;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-9);
+  font-size: var(--text-nav);
   background: var(--color-sunken);
   color: var(--color-textSoft);
 }
@@ -603,6 +605,7 @@ input[type="checkbox"][role="switch"]:disabled {
   background: var(--color-selected);
 }
 .dialog-foot .btn-primary {
+  padding: 0 13px;
   background: var(--color-primary);
   color: var(--color-onAccent);
 }
@@ -856,6 +859,21 @@ input[type="checkbox"][role="switch"]:disabled {
     translate var(--m-base) var(--ease-drawer),
     opacity var(--m-base);
 }
+.toast > svg {
+  flex: none;
+  margin-right: -2px;
+}
+.toast-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin: 0 3px 0 1px;
+  border-radius: 50%;
+  background: var(--color-warn);
+}
+.toast-failed {
+  color: var(--color-danger);
+}
 .star-prompt {
   align-items: flex-start;
   max-width: 360px;
@@ -1000,8 +1018,7 @@ input[type="checkbox"][role="switch"]:disabled {
   flex-direction: column;
 }
 .palette::backdrop {
-  background: var(--color-backdrop);
-  backdrop-filter: blur(4px);
+  background: transparent;
 }
 .palette-search {
   display: flex;

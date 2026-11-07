@@ -3,8 +3,8 @@ import {
   GitBranch,
   CircleCheck,
   Loader2,
-  PanelBottom,
   PanelRight,
+  SquareTerminal,
   Rows3,
   ShieldAlert,
   Target,
@@ -28,7 +28,6 @@ import { engineById, useWorkspace } from "../../state/workspace";
 import { Button, IconButton, LinkButton } from "../../ui/controls";
 import { Empty, ErrorState, Loading, NarrowBack } from "../../ui/states";
 import { SurfacePane } from "../panels/SurfacePane";
-import { RIGHT_TABS } from "../panels/tabs";
 import { TerminalDrawerBody } from "../panels/TerminalDrawerBody";
 import { threadRunState } from "../workspace/RunState";
 import { RelatedThreads } from "./RelatedThreads";
@@ -70,8 +69,6 @@ function TopBar({
   const state = threadRunState(thread);
   const narrow = layout === "narrow";
   const connection = useConnectionKind();
-  const openTab = useUi((state) => state.panelTab);
-  const lastTab = RIGHT_TABS.find(({ id }) => id === openTab);
 
   return (
     <header className="topbar">
@@ -101,20 +98,13 @@ function TopBar({
         <IconButton label="Details" pressed={detailsShown} onClick={onToggleDetails}>
           <Rows3 size={16} aria-hidden />
         </IconButton>
-        {narrow || paneShown ? null : (
-          <>
-            <IconButton label="Terminal" pressed={terminalOpen} onClick={() => togglePanel("terminal")}>
-              <PanelBottom size={16} aria-hidden />
-            </IconButton>
-            {lastTab ? (
-              <IconButton label={`Show ${lastTab.label} panel`} onClick={onTogglePane}>
-                <lastTab.icon size={16} aria-hidden />
-              </IconButton>
-            ) : null}
-            <IconButton label="Show side panel" onClick={onTogglePane}>
-              <PanelRight size={16} aria-hidden />
-            </IconButton>
-          </>
+        <IconButton label="Terminal" pressed={terminalOpen} onClick={() => togglePanel("terminal")}>
+          <SquareTerminal size={16} aria-hidden />
+        </IconButton>
+        {narrow ? null : (
+          <IconButton label="Show side panel" pressed={paneShown} onClick={onTogglePane}>
+            <PanelRight size={16} aria-hidden />
+          </IconButton>
         )}
       </div>
     </header>
@@ -450,7 +440,7 @@ export function ThreadView({ id }: { id: string }) {
           detailsShown={detailsShown}
           paneShown={panelOpen && wide}
           onToggleDetails={() => (cardDocked ? toggleDetailsPref() : setDetailsOverlay(!detailsOverlay))}
-          onTogglePane={() => setPanelOpen(true)}
+          onTogglePane={() => setPanelOpen(!(panelOpen && wide))}
         />
         {finding ? <ThreadFind onClose={() => setFinding(false)} /> : null}
         <div className="thread-stage" hidden={terminalTakesOver} data-hero={hero || undefined} data-connection={connection ?? undefined}>

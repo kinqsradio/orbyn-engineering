@@ -155,11 +155,11 @@
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 
   --sidebar-w: 224px;
-  --titlebar-h: 40px;
+  --titlebar-h: 44px;
   --topbar-h: 56px;
   --context-w: 380px;
   --drawer-w: 360px;
-  --lights-w: 78px;
+  --lights-w: 64px;
   --reading-w: 736px;
   --details-w: 280px;
   --rail-w: 300px;

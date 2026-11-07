@@ -1173,13 +1173,17 @@ export const Sidebar = memo(function Sidebar({ route }: { route: Route }) {
       {snoozing ? <CustomSnoozeDialog threads={snoozing} onClose={() => setSnoozing(null)} /> : null}
       {deleting ? (
         <ConfirmDialog
-          title={deleting.length === 1 ? "Delete thread?" : `Delete ${deleting.length} threads?`}
+          title={deleting.length === 1 ? `Delete “${deleting[0]?.title ?? "thread"}”?` : `Delete ${deleting.length} threads?`}
           confirmLabel="Delete"
           tone="danger"
           onClose={() => setDeletingState(null)}
           onConfirm={() => deleteThreads(deleting)}
         >
-          <p>This also removes side chats and cannot be undone.</p>
+          <p>
+            {deleting.length === 1
+              ? "Its messages and checkpoints are deleted. Code changes in its worktree stay."
+              : "Their messages and checkpoints are deleted. Code changes in their worktrees stay."}
+          </p>
         </ConfirmDialog>
       ) : null}
     </nav>

@@ -61,15 +61,14 @@ describe("surface tabs", () => {
     expect(useUi.getState().panelTab).toBe("pulls");
   });
 
-  it("keeps the layout controls: maximize, terminal and close", async () => {
+  it("keeps the layout controls: maximise and close", async () => {
     const user = userEvent.setup();
     const onReturn = vi.fn();
     const onToggleMaximize = vi.fn();
     pane({ onReturn, onToggleMaximize });
-    await user.click(screen.getByRole("button", { name: "Maximize pane" }));
+    await user.click(screen.getByRole("button", { name: "Maximise panel" }));
     expect(onToggleMaximize).toHaveBeenCalled();
-    await user.click(screen.getByRole("button", { name: "Terminal" }));
-    expect(useUi.getState().terminalOpen).toBe(true);
+    expect(screen.queryByRole("button", { name: "Terminal" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Close side panel" }));
     expect(onReturn).toHaveBeenCalled();
   });
@@ -77,7 +76,7 @@ describe("surface tabs", () => {
   it("offers Back to thread instead of maximize when it covers the thread", () => {
     pane({ overlay: true });
     expect(screen.getByRole("button", { name: "Back to thread" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Maximize pane" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Maximise panel" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("tab")).toHaveLength(6);
   });
 

@@ -22,3 +22,13 @@ it("starts a side chat from a thread", () => {
   expect(side.body).toMatchObject({ lifecycle: { parent_thread_id: "t-approval", relation: "side" } });
   expect(api.handle("POST", "/api/threads/missing/fork", { side: true }).status).toBe(404);
 });
+
+it("serves a thread's linked pull requests, and their refresh, as arrays", () => {
+  const api = createMockApi();
+  const linked = api.handle("GET", "/api/threads/t-approval/pulls");
+  expect(linked.status).toBe(200);
+  expect(linked.body).toEqual([expect.objectContaining({ number: 42, title: "Add approval timeouts" })]);
+  const refreshed = api.handle("POST", "/api/threads/t-approval/pulls/refresh");
+  expect(refreshed.status).toBe(200);
+  expect(Array.isArray(refreshed.body)).toBe(true);
+});

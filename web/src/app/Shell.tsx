@@ -314,7 +314,7 @@ const attentionOf = (thread: Thread): Attention =>
           : "idle";
 
 const notices: Partial<Record<Attention, string>> = {
-  waiting: "needs your approval",
+  waiting: "needs you",
   done: "finished",
   failed: "failed",
 };
@@ -350,7 +350,7 @@ function useThreadNotifications(openId: string | null) {
         if (before === undefined || before === now || !notice || thread.id === openId) continue;
         useAnnouncer.setState({ text: `${thread.title} ${notice}` });
         const { inAppNotifications, threadNotifications, threadSound, pushToast } = useUi.getState();
-        if (inAppNotifications) pushToast(`${thread.title} ${notice}`);
+        if (inAppNotifications) pushToast(`${thread.title} ${notice}`, now === "waiting" ? "needs" : now === "done" ? "done" : "failed");
         if (threadSound) playChime();
         if (threadNotifications && document.hidden && "Notification" in window && Notification.permission === "granted") {
           new Notification(thread.title, { body: notice });

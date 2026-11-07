@@ -1,68 +1,113 @@
-/* The window: a title bar over the sidebar and the main sheet. */
+/* The window: one title bar over the sidebar, and the main sheet beside it. */
 .shell {
+  position: relative;
   display: grid;
   grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
-  grid-template-rows: var(--titlebar-h) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   height: 100dvh;
   background: var(--color-sidebar);
 }
 .shell[data-nav="hidden"],
 .shell[data-layout="narrow"] {
   grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: var(--titlebar-h) minmax(0, 1fr);
 }
+/* Unified title bar: it floats over the top of the sidebar and has no background of its own. */
 .titlebar {
-  grid-area: 1 / 1 / 2 / -1;
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 6;
+  pointer-events: none;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 2px;
+  height: var(--titlebar-h);
   min-width: 0;
-  padding: 0 14px;
+  padding: 0 8px 0 16px;
   color: var(--color-muted);
   font-size: var(--text-nav);
   user-select: none;
 }
-.titlebar .icon-btn {
-  margin-left: -6px;
-  color: var(--color-muted);
+/* Without the sidebar the bar is a row of its own, over the sheet, with the title centred. */
+.titlebar > * {
+  pointer-events: auto;
+}
+.titlebar[data-nav="hidden"],
+.shell[data-layout="narrow"] > .titlebar {
+  pointer-events: auto;
+  position: relative;
+  grid-area: 1 / 1 / 2 / -1;
+  width: auto;
+  background: var(--color-background);
+}
+.shell[data-layout="narrow"] > .titlebar[data-nav="shown"] {
+  background: var(--color-sidebar);
 }
 /* Room for the macOS traffic lights, in the desktop app only. */
 .titlebar-lights {
   flex: none;
   width: var(--lights-w);
 }
-.titlebar-brand {
+.tbi {
+  display: inline-grid;
+  place-items: center;
   flex: none;
-  color: var(--color-text);
-  font-weight: 500;
-  text-decoration: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-7);
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
 }
-.titlebar-page {
-  display: flex;
-  align-items: center;
-  flex: 1;
-  gap: 8px;
-  min-width: 0;
+.tbi:hover:not([data-dim]) {
+  background: var(--color-rowHover);
 }
-.titlebar-page-label {
-  min-width: 0;
+.tbi[data-dim] {
+  color: var(--color-faint);
+  opacity: 0.55;
+  cursor: default;
+}
+.titlebar-title {
+  position: absolute;
+  left: 50%;
+  max-width: 50%;
   overflow: hidden;
+  color: var(--color-muted);
+  font-size: var(--text-nav);
+  text-decoration: none;
   text-overflow: ellipsis;
+  transform: translateX(-50%);
   white-space: nowrap;
 }
+.titlebar-page-label {
+  font-weight: 400;
+}
+.titlebar-title b {
+  color: var(--color-text);
+  font-weight: 500;
+}
 .titlebar-end {
+  position: absolute;
+  top: 8px;
+  right: 14px;
   display: flex;
   align-items: center;
-  flex: none;
   gap: 8px;
+  font-size: var(--text-meta);
+  white-space: nowrap;
 }
 .titlebar-diff {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 26px;
-  padding: 0 10px;
+  height: 30px;
+  padding: 0 12px;
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-9);
   background: var(--color-chip);
   color: var(--color-textSoft);
   font-size: var(--text-nav);
@@ -96,13 +141,12 @@
   transform: none;
 }
 .main {
-  grid-area: 2 / 2;
+  position: relative;
+  grid-area: 1 / 2;
   min-width: 0;
   min-height: 0;
   background: var(--color-background);
-  border-top: 1px solid var(--color-border);
   border-left: 1px solid var(--color-border);
-  border-top-left-radius: var(--radius-lg);
   overflow: auto;
 }
 .shell[data-nav="hidden"] > .main,
@@ -110,9 +154,7 @@
   grid-area: 2 / 1;
 }
 .shell[data-nav="hidden"] > .main {
-  border-top: 0;
   border-left: 0;
-  border-top-left-radius: 0;
 }
 /* Holds the routed page without changing how it lays out in .main. */
 .main-view {
@@ -124,14 +166,18 @@
 
 /* Sidebar */
 .sidebar {
-  grid-area: 2 / 1;
+  grid-area: 1 / 1;
   position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
   min-width: 0;
-  padding: 6px 10px 10px;
+  padding: 46px 10px 10px;
   background: var(--color-sidebar);
+}
+.shell[data-layout="narrow"] > .sidebar {
+  grid-area: 2 / 1;
+  padding-top: 6px;
 }
 .sidebar-search {
   flex: none;
@@ -146,7 +192,7 @@
   min-width: 0;
   height: 32px;
   padding: 0 10px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-9);
   background: var(--color-chip);
   color: var(--color-faint);
   font-size: var(--text-nav);
@@ -193,7 +239,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  height: 30px;
+  height: 28px;
   padding: 0 8px;
   border-radius: var(--radius-md);
   color: var(--color-textSoft);
@@ -240,16 +286,14 @@
   align-items: center;
   flex: none;
   gap: 4px;
-  min-height: 28px;
-  margin-top: 8px;
-  padding: 0 0 0 8px;
+  padding: 14px 8px 5px;
   color: var(--color-faint);
   font-size: var(--text-label);
 }
 .side-label-tools {
   display: inline-flex;
   align-items: center;
-  margin-left: auto;
+  margin: -4px -4px -4px auto;
 }
 .side-label .icon-btn {
   width: 24px;
@@ -526,7 +570,7 @@ li[data-highlight] .thread-row {
   flex: 1;
   gap: 10px;
   min-width: 0;
-  height: 30px;
+  height: 28px;
   padding: 0 8px;
   border: 0;
   border-radius: var(--radius-md);
@@ -984,40 +1028,30 @@ details[open] > summary > .chev {
   color: var(--color-muted);
   font-size: var(--text-meta);
 }
-.update-group {
+.update-dialog {
+  width: min(480px, calc(100vw - 32px));
+}
+.update-table {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  margin-top: 8px;
-  padding: 10px 12px;
-  border-radius: var(--radius-lg);
-  background: var(--color-sunken);
-}
-.update-group h3 {
-  color: var(--color-faint);
-  font-size: var(--text-meta);
-  font-weight: 500;
+  border-bottom: 1px solid var(--color-divider);
 }
 .update-item {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px;
   align-items: center;
-  gap: 4px 12px;
-  min-height: 32px;
+  gap: 12px;
+  min-height: 44px;
+  padding: 6px 4px;
+  border-top: 1px solid var(--color-divider);
   font-size: var(--text-small);
 }
 .update-name {
-  flex: 1 0 150px;
-  min-width: 0;
-  overflow: hidden;
   color: var(--color-text);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-weight: 500;
 }
 .update-versions {
-  flex: none;
   color: var(--color-muted);
-  font-family: var(--font-mono);
   font-size: var(--text-meta);
 }
 .update-steps {
@@ -1064,11 +1098,6 @@ details[open] > summary > .chev {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.update-notes {
-  max-height: 240px;
-  overflow-y: auto;
-  font-size: var(--text-small);
-}
 .update-pill {
   display: flex;
   align-items: center;
@@ -1090,9 +1119,7 @@ details[open] > summary > .chev {
   background: var(--color-selected);
 }
 .update-kind {
-  flex: none;
   color: var(--color-muted);
-  font-size: var(--text-meta);
 }
 .update-intro {
   color: var(--color-muted);
@@ -1210,7 +1237,7 @@ li[data-file-over] .thread-row {
 }
 .quit-overlay {
   position: fixed;
-  top: 40%;
+  top: 50%;
   left: 50%;
   z-index: 1000;
   display: flex;
@@ -1224,9 +1251,12 @@ li[data-file-over] .thread-row {
   border-radius: var(--radius-xl);
   background: var(--color-surface);
   color: var(--color-text);
+  /* The last shadow is the scrim: it dims the window around the dialog. */
   box-shadow:
     0 16px 48px var(--color-shadow),
-    0 0 0 1px var(--color-borderStrong);
+    0 0 0 1px var(--color-borderStrong),
+    0 0 0 100vmax rgb(0 0 0 / 8%);
+  pointer-events: none;
   text-align: center;
   font-size: var(--text-small);
 }
@@ -1240,7 +1270,7 @@ li[data-file-over] .thread-row {
   height: 30px;
   padding: 0 6px;
   border-radius: var(--radius-sm);
-  background: var(--color-sunken);
+  background: var(--color-chip);
   box-shadow: inset 0 -1px 0 var(--color-borderStrong);
   color: var(--color-textSoft);
   font-family: var(--font-mono);
@@ -1251,28 +1281,37 @@ li[data-file-over] .thread-row {
   font-size: 12px;
 }
 .quit-progress {
+  display: block;
+  width: 100%;
   height: 4px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--color-borderStrong);
+}
+.quit-progress::after {
+  content: "";
+  display: block;
+  width: 0;
+  height: 100%;
   border-radius: var(--radius-pill);
   background: var(--color-text);
 }
 /* Progress, not decoration: the fill runs linearly for the whole hold, and a release resets
    it over --m-fast. It keeps this timing under reduced motion. */
-.quit-progress {
-  display: block;
-  width: 0;
+.quit-progress::after {
   transition: width var(--m-fast) var(--m-out);
 }
-.quit-progress[data-holding] {
+.quit-progress[data-holding]::after {
   width: 100%;
   transition: width var(--hold-ms) linear;
 }
 @media (prefers-reduced-motion: reduce) {
-  .quit-progress {
+  .quit-progress::after {
     transition-property: width !important;
     transition-duration: var(--m-fast) !important;
     transition-timing-function: var(--m-out) !important;
   }
-  .quit-progress[data-holding] {
+  .quit-progress[data-holding]::after {
     transition-duration: var(--hold-ms) !important;
     transition-timing-function: linear !important;
   }

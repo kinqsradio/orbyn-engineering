@@ -1,6 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { X } from "lucide-react";
 import { toFailure } from "../lib/useAsync";
+import { X } from "lucide-react";
 import { Button, IconButton, type ButtonTone } from "./controls";
 
 interface DialogProps {
@@ -10,12 +10,14 @@ interface DialogProps {
   busy?: boolean;
   /** Extra classes on the dialog element, for a surface wider than a form. */
   className?: string;
+  /** A viewer, not a question: it has no footer to dismiss it, so the header carries Close. */
+  closeButton?: boolean;
   children: ReactNode;
   footer?: ReactNode;
 }
 
 /** A native modal: the top layer owns focus containment and Escape. */
-export function Dialog({ title, onClose, busy, className, children, footer }: DialogProps) {
+export function Dialog({ title, onClose, busy, className, closeButton, children, footer }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
@@ -47,9 +49,11 @@ export function Dialog({ title, onClose, busy, className, children, footer }: Di
     >
       <header className="dialog-head">
         <h2 id={titleId}>{title}</h2>
-        <IconButton label="Close" onClick={onClose} disabled={busy}>
-          <X size={16} aria-hidden />
-        </IconButton>
+        {closeButton ? (
+          <IconButton label="Close" onClick={onClose} disabled={busy}>
+            <X size={16} aria-hidden />
+          </IconButton>
+        ) : null}
       </header>
       <div className="dialog-body">{children}</div>
       {footer ? <footer className="dialog-foot">{footer}</footer> : null}
