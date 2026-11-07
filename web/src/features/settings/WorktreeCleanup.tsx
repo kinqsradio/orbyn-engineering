@@ -16,11 +16,35 @@ import { useUi } from "../../state/ui";
 
 /** Turning cleanup on without a number of days uses this one. */
 const DEFAULT_DAYS = 7;
-const TITLE = "Clean up finished worktrees";
+const TITLE = "Automatic worktree cleanup";
 
 type Policy = { mode?: string; rules?: { settled_after_days?: unknown } };
 const policy = (value: unknown): Policy => value !== null && typeof value === "object" ? value as Policy : {};
-const days = (count: number) => `${count} ${count === 1 ? "day" : "days"}`;
+
+/** Off or On, with the days a worktree stays after it settles (7 until set) beside it while On. */
+function CleanupSelect({ label, current, disabled, mixed, set }: { label: string; current: number | null; disabled: boolean; mixed?: boolean; set(days: number | null): void }) {
+  const [draft, setDraft] = useState(String(current ?? DEFAULT_DAYS));
+  useEffect(() => { setDraft(String(current ?? DEFAULT_DAYS)); }, [current]);
+  const commit = () => {
+    if (current === null || draft.trim() === "" || !Number.isFinite(Number(draft))) { setDraft(String(current ?? DEFAULT_DAYS)); return; }
+    const next = Math.max(0, Math.min(3650, Math.round(Number(draft))));
+    setDraft(String(next));
+    if (next !== current) set(next);
+  };
+  return <span className="set-inline-control">
+    <select aria-label={label} disabled={disabled} value={mixed ? "mixed" : current === null ? "off" : "on"}
+      onChange={(event) => set(event.target.value === "on" ? Number(draft) || DEFAULT_DAYS : null)}>
+      {mixed ? <option value="mixed" disabled>Mixed</option> : null}
+      <option value="off">Off</option><option value="on">On</option>
+    </select>
+    {current !== null && !mixed ? <span className="unit-field">
+      <input type="number" min={0} max={3650} step={1} aria-label={`${label}: days`} disabled={disabled} value={draft}
+        onChange={(event) => setDraft(event.target.value)} onBlur={commit}
+        onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } }} />
+      <span className="t3" aria-hidden>days</span>
+    </span> : null}
+  </span>;
+}
 
 export function WorktreeCleanup() {
   const scope = useSettingsScope();
@@ -52,8 +76,8 @@ function CleanupRules({ query }: { query: ProjectScopesQuery }) {
     const candidate = own.mode === "off" ? null : own.mode === "custom" ? own.rules?.settled_after_days : legacyAge;
     return typeof candidate === "number" && Number.isInteger(candidate) && candidate >= 0 && candidate <= 3650 ? candidate : null;
   };
-  const turn = (on: boolean, current: number | null): PreferenceEdit => ({ op: "set",
-    value: on ? { mode: "custom", rules: { settled_after_days: current ?? DEFAULT_DAYS } } : { mode: "off" } });
+  const turn = (days: number | null): PreferenceEdit => ({ op: "set",
+    value: days !== null ? { mode: "custom", rules: { settled_after_days: days } } : { mode: "off" } });
   const guard = async (write: () => Promise<void>): Promise<boolean> => {
     if (disabled || pending.current) return false;
     pending.current = true; setBusy(true); setError(null);
@@ -87,16 +111,15 @@ function CleanupRules({ query }: { query: ProjectScopesQuery }) {
   const view = row.members[0]?.view ?? row.environment;
   return <SettingGroup>
     {retry}
-    <SettingRow title={TITLE} description={`Merged or archived, untouched for ${days(current ?? DEFAULT_DAYS)}`} actions={
+    <SettingRow title={TITLE} description="Merged or archived worktrees, untouched for the days set" actions={
       <div className="setting-inheritance-actions">
         <PreferenceInheritance row={{ key: row.key, title: TITLE }} view={view} global={row.environment} members={row.members} mixed={mixed}
           disabled={disabled} onResetOverrides={() => undefined} />
         {view.source === "project" ? <Button small tone="quiet" disabled={disabled} aria-label={`Reset ${TITLE} to default`} title="Reset to inherited value"
           onClick={() => { void guard(async () => { await put(query, snapshot.catalog.version, row, { op: "inherit" }); }); }}>Inherit</Button> : null}
       </div>}>
-      <input type="checkbox" role="switch" aria-label={TITLE} aria-checked={mixed ? "mixed" : current !== null} disabled={disabled}
-        checked={!mixed && current !== null}
-        onChange={(event) => { void guard(async () => { await put(query, snapshot.catalog.version, row, turn(event.target.checked, current)); }); }} />
+      <CleanupSelect label={TITLE} current={mixed ? null : current} mixed={mixed} disabled={disabled}
+        set={(days) => { void guard(async () => { await put(query, snapshot.catalog.version, row, turn(days)); }); }} />
     </SettingRow>
   </SettingGroup>;
 }
@@ -106,16 +129,16 @@ function ProjectsTable({ row, groups, age, turn, write, disabled, retry }: {
   row: ScopedPreferenceRow;
   groups: ProjectScopeGroup[];
   age(value: unknown): number | null;
-  turn(on: boolean, current: number | null): PreferenceEdit;
+  turn(days: number | null): PreferenceEdit;
   write(group: ProjectScopeGroup, edit: (current: ScopedPreferenceRow) => PreferenceEdit): Promise<boolean>;
   disabled: boolean;
   retry: React.ReactNode;
 }) {
-  const columns = "minmax(0, 1fr) 90px";
+  const columns = "minmax(0, 1fr) 230px";
   return <SettingGroup>
     {retry}
-    <div role="table" aria-label="Clean up finished worktrees by project" className="set-tbl">
-      <div role="row" className="set-tr h" style={{ gridTemplateColumns: columns }}><span role="columnheader">Project</span><span role="columnheader">Clean up</span></div>
+    <div role="table" aria-label="Automatic worktree cleanup by project" className="set-tbl">
+      <div role="row" className="set-tr h" style={{ gridTemplateColumns: columns }}><span role="columnheader">Project</span><span role="columnheader">Automatic worktree cleanup</span></div>
       {groups.map((group) => {
         const override = row.overrides.find((entry) => group.members.some((member) => member.project_id === entry.project_id));
         const value: JsonValue = override ? override.value : row.environment.value;
@@ -128,8 +151,8 @@ function ProjectsTable({ row, groups, age, turn, write, disabled, retry }: {
               <PreferenceInheritance row={{ key: row.key, title: TITLE }} view={view} global={row.environment} disabled={disabled}
                 onResetOverrides={() => undefined} />
             </span>
-            <input type="checkbox" role="switch" aria-label={`${TITLE} for ${group.label}`} aria-checked={current !== null} disabled={disabled}
-              checked={current !== null} onChange={(event) => { void write(group, () => turn(event.target.checked, current)); }} />
+            <CleanupSelect label={`${TITLE} for ${group.label}`} current={current} disabled={disabled}
+              set={(days) => { void write(group, () => turn(days)); }} />
           </span>
         </div>;
       })}

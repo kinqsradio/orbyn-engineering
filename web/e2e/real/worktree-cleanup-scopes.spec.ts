@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { startProject } from "./service";
 
-const TITLE = "Clean up finished worktrees";
+const TITLE = "Automatic worktree cleanup";
 
 test("switching cleanup on captures the inherited legacy age for the selected project", async ({ page }) => {
   const { service, projectId } = await startProject({ fakeEngines: true });
@@ -10,10 +10,10 @@ test("switching cleanup on captures the inherited legacy age for the selected pr
     const catalog = await service.api<{ groups: { key: string; members: { project_id: string }[] }[] }>("POST", "/api/settings/project-scopes", {});
     const group = catalog.groups.find((entry) => entry.members.some((member) => member.project_id === projectId))!;
     await page.goto(`${service.page}#/settings/worktrees?project=${encodeURIComponent(group.key)}`);
-    const toggle = page.getByRole("switch", { name: TITLE, exact: true });
-    await expect(toggle).toBeChecked();
-    await expect(page.getByText("Merged or archived, untouched for 12 days", { exact: true })).toBeVisible();
-    await toggle.click(); await toggle.click();
+    const select = page.getByRole("combobox", { name: TITLE, exact: true });
+    await expect(select).toHaveValue("on");
+    await expect(page.getByRole("spinbutton", { name: `${TITLE}: days`, exact: true })).toHaveValue("12");
+    await select.selectOption("off"); await select.selectOption("on");
     await expect.poll(async () => (await service.api<{ key: string; value: unknown }[]>("GET", `/api/preferences?project_id=${projectId}`)).find((entry) => entry.key === "worktree_cleanup")!.value)
       .toMatchObject({ mode: "custom", rules: { settled_after_days: 12 } });
   } finally { await service.stop(); }
@@ -26,16 +26,19 @@ test("worktree cleanup uses project Off, On and Inherit without changing environ
     const catalog = await service.api<{ groups: { key: string; label: string; members: { project_id: string }[] }[] }>("POST", "/api/settings/project-scopes", {});
     const group = catalog.groups.find((entry) => entry.members.some((member) => member.project_id === projectId))!;
     await page.goto(`${service.page}#/settings/worktrees?project=${encodeURIComponent(group.key)}`);
-    const toggle = page.getByRole("switch", { name: TITLE, exact: true });
+    const select = page.getByRole("combobox", { name: TITLE, exact: true });
     const preference = async (project?: string) => (await service.api<{ key: string; value: unknown; source: string }[]>("GET", `/api/preferences${project ? `?project_id=${project}` : ""}`))
       .find((entry) => entry.key === "worktree_cleanup")!;
-    await expect(toggle).toBeChecked();
-    await toggle.click();
+    await expect(select).toHaveValue("on");
+    await select.selectOption("off");
     await expect.poll(async () => (await preference(projectId)).value).toMatchObject({ mode: "off" });
-    await expect(toggle).not.toBeChecked();
+    await expect(select).toHaveValue("off");
     expect((await preference()).value).toEqual({ mode: "custom", rules: { settled_after_days: 12, forward: "environment" } });
-    await toggle.click();
+    await select.selectOption("on");
     await expect.poll(async () => (await preference(projectId)).value).toMatchObject({ mode: "custom", rules: { settled_after_days: 7 } });
+    const days = page.getByRole("spinbutton", { name: `${TITLE}: days`, exact: true });
+    await days.fill("3"); await days.press("Enter");
+    await expect.poll(async () => (await preference(projectId)).value).toMatchObject({ mode: "custom", rules: { settled_after_days: 3 } });
     await page.screenshot({ path: info.outputPath("project-worktree-cleanup.png") });
     await page.getByRole("button", { name: `Reset ${TITLE} to default`, exact: true }).click();
     await expect.poll(async () => (await preference(projectId)).source).toBe("global");

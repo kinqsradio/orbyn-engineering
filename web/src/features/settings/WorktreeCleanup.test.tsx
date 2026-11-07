@@ -8,31 +8,31 @@ import { scopedFixture } from "./scopedPreferenceFixture.test-support";
 vi.mock("../../api/client", async (original) => ({ ...(await original<object>()), request: vi.fn() }));
 
 const view = (value: unknown, source = "default") => ({ key: "worktree_cleanup", value, default: {}, source, project_scoped: true }) as never;
-const serve = (value: unknown, source?: string) => vi.mocked(request).mockImplementation(async (method) =>
-  (method === "PUT" ? { ...scopedFixture([view(value, source)], [view({})], "p1") } : scopedFixture([view(value, source)], [view({})], "p1")) as never);
+const serve = (value: unknown, source?: string) => vi.mocked(request).mockImplementation(async () =>
+  scopedFixture([view(value, source)], [view({})], "p1") as never);
+const sent = (value: unknown) => expect(request).toHaveBeenCalledWith("PUT", "/api/settings/preferences", expect.objectContaining({ edits: { worktree_cleanup: { op: "set", value } } }));
 
 beforeEach(() => vi.mocked(request).mockReset());
 
-it("is off until switched on, and switching on sets the project's own seven days", async () => {
+it("is Off with no Days field until set to On, which starts at seven days", async () => {
   serve({});
   const user = userEvent.setup();
   render(<WorktreeCleanup />);
-  const toggle = await screen.findByRole("switch", { name: "Clean up finished worktrees" });
-  expect(toggle).not.toBeChecked();
-  expect(screen.getByText("Merged or archived, untouched for 7 days")).toBeVisible();
-  await user.click(toggle);
-  await waitFor(() => expect(request).toHaveBeenCalledWith("PUT", "/api/settings/preferences", expect.objectContaining({
-    edits: { worktree_cleanup: { op: "set", value: { mode: "custom", rules: { settled_after_days: 7 } } } } })));
+  const select = await screen.findByRole("combobox", { name: "Automatic worktree cleanup" });
+  expect(select).toHaveValue("off");
+  expect(screen.queryByRole("spinbutton")).toBeNull();
+  await user.selectOptions(select, "on");
+  await waitFor(() => sent({ mode: "custom", rules: { settled_after_days: 7 } }));
 });
 
-it("shows the project's saved days and switches off with mode off", async () => {
+it("shows the saved days beside On, saves a new number on leaving it, and Off hides it", async () => {
   serve({ mode: "custom", rules: { settled_after_days: 14 } }, "project");
   const user = userEvent.setup();
   render(<WorktreeCleanup />);
-  const toggle = await screen.findByRole("switch", { name: "Clean up finished worktrees" });
-  expect(toggle).toBeChecked();
-  expect(screen.getByText("Merged or archived, untouched for 14 days")).toBeVisible();
-  await user.click(toggle);
-  await waitFor(() => expect(request).toHaveBeenCalledWith("PUT", "/api/settings/preferences", expect.objectContaining({
-    edits: { worktree_cleanup: { op: "set", value: { mode: "off" } } } })));
+  const days = await screen.findByRole("spinbutton", { name: "Automatic worktree cleanup: days" });
+  expect(days).toHaveValue(14);
+  await user.clear(days); await user.type(days, "3"); await user.tab();
+  await waitFor(() => sent({ mode: "custom", rules: { settled_after_days: 3 } }));
+  await user.selectOptions(screen.getByRole("combobox", { name: "Automatic worktree cleanup" }), "off");
+  await waitFor(() => sent({ mode: "off" }));
 });
