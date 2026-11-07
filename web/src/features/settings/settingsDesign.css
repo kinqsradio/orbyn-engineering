@@ -660,3 +660,6 @@
 .setting-line-control:has(> .set-model-moves, > * > .set-model-moves) {
   gap: 10px;
 }
+.set-grp .set-pill {
+  margin-left: 8px;
+}

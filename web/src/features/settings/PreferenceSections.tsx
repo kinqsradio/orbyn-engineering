@@ -674,6 +674,11 @@ export function AboutSection() {
   );
 }
 
+/** The project's name over its archived threads. A project that was removed keeps its group, with a neutral Removed tag; the service marks none yet, so none shows. */
+export function ArchiveGroupHead({ name, removed }: { name: string; removed: boolean }) {
+  return <p className="set-grp set-grp-tight">{name}{removed ? <span className="set-pill">Removed</span> : null}</p>;
+}
+
 export function ArchiveSection() {
   const projects = useVisibleProjects();
   const [threads, setThreads] = useState<Thread[] | null>(null);
@@ -714,7 +719,7 @@ export function ArchiveSection() {
             if (!owned.length) return null;
             return (
               <section key={project.id} aria-label={project.name}>
-                <p className="set-grp set-grp-tight">{project.name}</p>
+                <ArchiveGroupHead name={project.name} removed={false} />
                 <div className="set-tbl" role="table" aria-label={`Archived threads in ${project.name}`}>
                   {owned.map((thread) => (
                     <div key={thread.id} role="row" className="set-tr" style={columns}>
