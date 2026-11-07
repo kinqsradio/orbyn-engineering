@@ -451,12 +451,12 @@ function BranchNaming({ value, save }: { value: string; save(next: string): void
 }
 
 /** The prefix without its slash, and the branch name it makes. */
-function BranchPrefix({ value, save, disabled }: { value: string; save(next: string): void; disabled: boolean }) {
+function BranchPrefix({ value, save, disabled, mixed }: { value: string; save(next: string): void; disabled: boolean; mixed?: boolean }) {
   const [draft, setDraft] = useState(value);
   useEffect(() => { setDraft(value); }, [value]);
   const clean = draft.trim().replace(/\/+$/, "");
   return <div className="set-naming">
-    <input aria-label="Branch prefix" className="mono" spellCheck={false} disabled={disabled} value={draft}
+    <input aria-label="Branch prefix" className="mono" spellCheck={false} disabled={disabled} value={draft} placeholder={mixed ? "Mixed" : undefined}
       onChange={(event) => setDraft(event.target.value)}
       onBlur={() => { if (clean !== value) save(clean); }}
       onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } }} />
@@ -496,7 +496,7 @@ export function WorktreesSection() {
                 key: "branch_name_prefix",
                 title: settingsLabel("worktrees-branch-prefix"),
                 description: "A / is added after the prefix.",
-                render: (value, save, control) => <BranchPrefix value={String(value ?? "")} save={save} disabled={control.disabled} />,
+                render: (value, save, control) => <BranchPrefix value={String(value ?? "")} save={save} disabled={control.disabled} mixed={control.mixed} />,
               },
               { key: "branch_name_instructions", title: settingsLabel("worktrees-branch-name-instructions"), description: "Extra guidance for the names Orbyn generates", multiline: true,
                 showWhen: (valueOf) => valueOf("branch_naming_mode") === "custom" },
