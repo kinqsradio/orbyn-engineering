@@ -8,6 +8,8 @@ import type {
   PullCheck,
   PullCheckout,
   PullConversation,
+  PullDetailsRequest,
+  PullDetailsResponse,
   PullFile,
   PullGuideState,
   PullList,
@@ -28,6 +30,13 @@ export const pullsApi = {
   forges: (signal?: AbortSignal) => request<ForgeStatus[]>("GET", "/api/forges", undefined, signal),
   list: (state: string, query: string, signal?: AbortSignal) =>
     request<PullList>("GET", `/api/pulls?state=${q(state)}&q=${q(query)}`, undefined, signal),
+  /**
+   * What the base list leaves out (reviewers, the viewer's review, comment totals, when
+   * opened), for rows already shown, so the list paints first. Pass `fresh` only for a
+   * refresh the person started; background refreshes reuse what is known.
+   */
+  details: (body: PullDetailsRequest, signal?: AbortSignal) =>
+    request<PullDetailsResponse>("POST", "/api/pulls/details", body, signal),
   detail: (projectId: string, number: number, signal?: AbortSignal) =>
     request<PullRequestDetail>("GET", base(projectId, number), undefined, signal),
   checks: (projectId: string, number: number, signal?: AbortSignal) =>

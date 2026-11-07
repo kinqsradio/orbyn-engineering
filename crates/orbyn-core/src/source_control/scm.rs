@@ -6,15 +6,15 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use orbyn_contracts::{
     AddPullComment, BranchInfo, CheckoutPull, CreateBranch, EditPullComment, ForgeStatus,
     GitAction, GitActionResult, GitPhase, MergePull, Project, PublishProject, PullBulkResult,
-    PullCandidate, PullCheck, PullCheckout, PullConversation, PullFile, PullList, PullListEntry,
-    PullListFailure, PullRequest, PullRequestDetail, PullRequestDraft, PullRevision, PullStack,
-    PullTimelineEvent, PullWatch, ReactPullComment, SetPullPeople, StackAction, SubmitReview,
-    Thread, UpdatePull, WorkOnPull,
+    PullCandidate, PullCheck, PullCheckout, PullConversation, PullDetails, PullDetailsRequest,
+    PullDetailsResponse, PullFile, PullList, PullListEntry, PullListFailure, PullRequest,
+    PullRequestDetail, PullRequestDraft, PullRevision, PullStack, PullTimelineEvent, PullWatch,
+    ReactPullComment, SetPullPeople, StackAction, SubmitReview, Thread, UpdatePull, WorkOnPull,
 };
 use serde_json::{Value, json};
 use tokio::process::Command;
@@ -22,7 +22,8 @@ use tokio::process::Command;
 use crate::app::Core;
 use crate::error::{CoreError, Result};
 use crate::source_control::forge::{
-    self, ALL_FORGES, Forge, PullFilter, create_pull, fetch_pull, forge_of, number_from_url,
+    self, ALL_FORGES, DETAIL_FIELDS, DETAILS_ROW_LIMIT, DetailsOutcome, Forge, PullFilter,
+    create_pull, fetch_pull, forge_of, number_from_url,
 };
 use crate::source_control::git::{git, text};
 use crate::store::{AuditRecord, WatchUpdate};
@@ -218,6 +219,7 @@ impl Core {
                     labels: Vec::new(),
                     review_state: None,
                     checks_state: None,
+                    checks: None,
                 });
                 self.store.link_pull(id, &pull)?;
             }
@@ -550,6 +552,97 @@ impl Core {
             }
         }
         Ok(list)
+    }
+
+    /// What the base list leaves out, for pull requests the caller already shows. GitHub
+    /// answers one batched request per project, and only for rows whose details are not
+    /// already known (an unchanged `updated_at`, for at most ten minutes) unless the
+    /// request is `fresh`. Repeated rows count once, and rows past the first 100 are
+    /// ignored and so have no details. A project that cannot be read, a failed batch or a forge
+    /// without details leaves those rows out whole. A spent rate limit pauses details for
+    /// two minutes and leaves every row without them.
+    pub async fn pull_details(&self, request: &PullDetailsRequest) -> Result<PullDetailsResponse> {
+        let mut projects: Vec<(&str, Vec<&orbyn_contracts::PullDetailsRef>)> = Vec::new();
+        let mut rows = 0;
+        for pull in &request.pulls {
+            let repeated = projects.iter().any(|(id, refs)| {
+                *id == pull.project_id && refs.iter().any(|r| r.number == pull.number)
+            });
+            if repeated {
+                continue;
+            }
+            if rows == DETAILS_ROW_LIMIT {
+                break;
+            }
+            rows += 1;
+            match projects.iter_mut().find(|(id, _)| *id == pull.project_id) {
+                Some((_, refs)) => refs.push(pull),
+                None => projects.push((pull.project_id.as_str(), vec![pull])),
+            }
+        }
+        let paused = || PullDetailsResponse {
+            details: Vec::new(),
+            paused: DETAIL_FIELDS
+                .iter()
+                .map(|name| (*name).to_owned())
+                .collect(),
+        };
+        let mut found: Vec<PullDetails> = Vec::new();
+        for (project_id, refs) in projects {
+            let Ok((project, forge)) = self.pull_site(project_id).await else {
+                continue;
+            };
+            if forge != Forge::GitHub {
+                continue;
+            }
+            let now = Instant::now();
+            let mut known = Vec::new();
+            let mut missing = Vec::new();
+            {
+                let cache = self.pull_details.lock().unwrap();
+                if cache.paused(now) {
+                    return Ok(paused());
+                }
+                for pull in refs {
+                    let cached = if request.fresh {
+                        None
+                    } else {
+                        cache.lookup(project_id, pull.number, pull.updated_at.as_deref(), now)
+                    };
+                    match cached {
+                        Some(details) => known.push(details),
+                        None => missing.push(pull),
+                    }
+                }
+            }
+            if !missing.is_empty() {
+                let numbers: Vec<u64> = missing.iter().map(|pull| pull.number).collect();
+                let cwd = Path::new(&project.path);
+                match forge::github_details(forge, cwd, project_id, &numbers).await {
+                    DetailsOutcome::Details(mut asked) => {
+                        let now = Instant::now();
+                        let mut cache = self.pull_details.lock().unwrap();
+                        for pull in missing {
+                            if let Some(details) = asked.remove(&pull.number) {
+                                cache.store(details.clone(), pull.updated_at.as_deref(), now);
+                                known.push(details);
+                            }
+                        }
+                    }
+                    DetailsOutcome::RateLimited => {
+                        self.pull_details.lock().unwrap().pause(Instant::now());
+                        return Ok(paused());
+                    }
+                    // Nothing new; the cached rows below still stand.
+                    DetailsOutcome::Unavailable => {}
+                }
+            }
+            found.extend(known);
+        }
+        Ok(PullDetailsResponse {
+            details: found,
+            paused: Vec::new(),
+        })
     }
 
     pub async fn project_pull(&self, project_id: &str, number: u64) -> Result<PullRequestDetail> {
@@ -1146,6 +1239,7 @@ mod tests {
             labels: Vec::new(),
             review_state: None,
             checks_state: None,
+            checks: None,
         }
     }
 

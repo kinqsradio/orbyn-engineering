@@ -91,11 +91,34 @@ function apiCall() {
     }
     return undefined;
   };
+  if (args[1] === "user") return out({ login: state.viewer ?? "me" });
   const method = flag("-X") ?? "GET";
   const path = args.find((arg, at) => at > 0 && /^(repos|graphql|user\/starred\/)/.test(arg)) ?? "";
   if (path === "user/starred/orbyn-dev/orbyn-engineering") process.exit(state.starred ? 0 : 1);
   if (path === "graphql") {
     const query = field("query") ?? "";
+    if (query.includes("reviewRequests")) {
+      // The batched details query: one alias `p<number>` per pull request.
+      if (state.rateLimited) return fail("GraphQL: API rate limit already exceeded");
+      const repository = {};
+      for (const [, number] of query.matchAll(/p(\d+):pullRequest/g)) {
+        const entry = state.pulls.find((candidate) => candidate.number === Number(number));
+        if (!entry) continue;
+        const inline = (entry.threads ?? []).flatMap((thread) => thread.comments.nodes).length;
+        repository[`p${number}`] = {
+          createdAt: entry.createdAt ?? "2026-09-01T00:00:00Z",
+          reviewRequests: {
+            nodes: (entry.reviewers ?? []).map((name) => ({
+              requestedReviewer: name.startsWith("team/") ? { __typename: "Team", slug: name.slice(5) } : { __typename: "User", login: name },
+            })),
+          },
+          latestReviews: { nodes: entry.latestReviews ?? [] },
+          comments: { totalCount: (entry.issueComments ?? []).length },
+          reviews: { nodes: [{ comments: { totalCount: inline } }] },
+        };
+      }
+      return out({ data: { viewer: { login: state.viewer ?? "me" }, repository } });
+    }
     if (query.includes("reviewThreads")) return out(threads(field("number")));
     const thread = allThreads().find((entry) => entry.id === field("id"));
     if (thread) {

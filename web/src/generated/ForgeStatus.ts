@@ -8,4 +8,8 @@ id: string, name: string,
 /**
  * The command this forge goes through; `None` when none exists.
  */
-program: string | null, installed: boolean, version: string | null, signed_in: boolean, accounts: Array<string>, problem: string | null, };
+program: string | null, installed: boolean, version: string | null, signed_in: boolean, accounts: Array<string>, 
+/**
+ * The login the CLI is signed in as; `None` when signed out or the forge has none.
+ */
+viewer?: string, problem: string | null, };

@@ -4,14 +4,16 @@
 //! DevOps and Forgejo cover the basics their CLIs have, and Bitbucket has no CLI to
 //! go through, so it reports that instead of asking for a token.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
 
 use orbyn_contracts::{
-    AddPullComment, MergePull, PullCandidate, PullCheck, PullComment, PullConversation, PullFile,
-    PullRequest, PullRequestDetail, PullRevision, PullThread, PullTimelineEvent, ReviewLineComment,
-    SetPullPeople, SubmitReview, UpdatePull,
+    AddPullComment, MergePull, PullCandidate, PullCheck, PullChecks, PullComment, PullConversation,
+    PullDetails, PullFile, PullRequest, PullRequestDetail, PullRevision, PullThread,
+    PullTimelineEvent, RequestedReviewer, ReviewLineComment, SetPullPeople, SubmitReview,
+    UpdatePull,
 };
 use serde_json::{Value, json};
 use tokio::io::AsyncWriteExt;
@@ -24,6 +26,12 @@ use crate::util::tail;
 
 const FORGE_TIMEOUT: Duration = Duration::from_secs(120);
 const LIST_LIMIT: &str = "100";
+/// The details request must not hold a refresh up for long.
+const DETAILS_TIMEOUT: Duration = Duration::from_secs(20);
+/// Pull requests asked in one GraphQL query, to stay inside its node and cost limits.
+const DETAILS_BATCH: usize = 25;
+/// Rows one details request may ask about, the size of a project's list.
+pub const DETAILS_ROW_LIMIT: usize = 100;
 
 impl crate::app::Core {
     /// A fixed, read-only product-repository check through the person's own CLI.
@@ -70,6 +78,8 @@ updatedAt,labels,reviewDecision,statusCheckRollup";
 const GH_VIEW_FIELDS: &str = "number,title,url,state,headRefName,baseRefName,author,isDraft,\
 updatedAt,labels,reviewDecision,statusCheckRollup,body,comments,reviews,mergeable,reviewRequests,\
 headRefOid,baseRefOid,additions,deletions,changedFiles,maintainerCanModify,autoMergeRequest";
+/// Failing check names kept per pull request, so a list stays small.
+const MAX_FAILING_NAMES: usize = 20;
 const THREADS_QUERY: &str = "query($owner:String!,$repo:String!,$number:Int!){\
 repository(owner:$owner,name:$repo){pullRequest(number:$number){reviewThreads(first:100){nodes{\
 id isResolved path line comments(first:100){nodes{databaseId body createdAt author{login}}}}}}}}";
@@ -293,27 +303,83 @@ fn check_state(status: &str, conclusion: &str) -> &'static str {
     }
 }
 
-/// One word for a whole check list: a failure wins, then anything unfinished.
-fn rollup(states: impl Iterator<Item = String>) -> String {
-    let states: Vec<String> = states.collect();
-    if states.is_empty() {
-        "none"
-    } else if states.iter().any(|state| state == "fail") {
-        "fail"
-    } else if states.iter().any(|state| state == "pending") {
-        "pending"
-    } else {
-        "pass"
-    }
-    .to_owned()
+/// What one entry of GitHub's check rollup counts as.
+#[derive(Debug, PartialEq, Eq)]
+enum CheckBucket {
+    Pass,
+    Fail,
+    Running,
+    /// Skipped, neutral or stale: only in the total.
+    Other,
 }
 
+/// A check run is running until it is `COMPLETED`; then its conclusion decides. A
+/// commit status has only a `state`, where `EXPECTED` and `PENDING` are still to come.
+fn check_bucket(entry: &Value) -> CheckBucket {
+    let status = field(entry, "status").to_uppercase();
+    let conclusion = field(entry, "conclusion").to_uppercase();
+    if status.is_empty() && conclusion.is_empty() {
+        return match field(entry, "state").to_uppercase().as_str() {
+            "SUCCESS" => CheckBucket::Pass,
+            "FAILURE" | "ERROR" => CheckBucket::Fail,
+            _ => CheckBucket::Running,
+        };
+    }
+    if !status.is_empty() && status != "COMPLETED" {
+        return CheckBucket::Running;
+    }
+    match conclusion.as_str() {
+        "SUCCESS" => CheckBucket::Pass,
+        "FAILURE" | "CANCELLED" | "TIMED_OUT" | "ACTION_REQUIRED" | "STARTUP_FAILURE" => {
+            CheckBucket::Fail
+        }
+        _ => CheckBucket::Other,
+    }
+}
+
+/// One word for the counts: a failure wins, then anything unfinished.
 fn github_rollup(value: &Value) -> Option<String> {
-    let checks = value.get("statusCheckRollup")?.as_array()?;
-    Some(rollup(checks.iter().map(|check| {
-        let status = [field(check, "status"), field(check, "state")].concat();
-        check_state(&status, field(check, "conclusion")).to_owned()
-    })))
+    let checks = github_checks(value)?;
+    Some(
+        if checks.total == 0 {
+            "none"
+        } else if checks.failing > 0 {
+            "fail"
+        } else if checks.running > 0 {
+            "pending"
+        } else {
+            "pass"
+        }
+        .to_owned(),
+    )
+}
+
+/// Per-state counts over GitHub's check rollup, which holds check runs and commit
+/// statuses. Skipped, neutral and stale checks count only in the total.
+fn github_checks(value: &Value) -> Option<PullChecks> {
+    let entries = value.get("statusCheckRollup")?.as_array()?;
+    let mut checks = PullChecks {
+        total: u32::try_from(entries.len()).unwrap_or(u32::MAX),
+        passing: 0,
+        failing: 0,
+        running: 0,
+        failing_names: Vec::new(),
+    };
+    for entry in entries {
+        match check_bucket(entry) {
+            CheckBucket::Pass => checks.passing += 1,
+            CheckBucket::Fail => {
+                checks.failing += 1;
+                let name = [field(entry, "name"), field(entry, "context")].concat();
+                if !name.is_empty() && checks.failing_names.len() < MAX_FAILING_NAMES {
+                    checks.failing_names.push(name);
+                }
+            }
+            CheckBucket::Running => checks.running += 1,
+            CheckBucket::Other => {}
+        }
+    }
+    Some(checks)
 }
 
 fn review_word(decision: &str) -> String {
@@ -399,7 +465,217 @@ pub fn parse_pull(value: &Value) -> Option<PullRequest> {
             .get("reviewDecision")
             .map(|decision| review_word(decision.as_str().unwrap_or_default())),
         checks_state: github_rollup(value),
+        checks: github_checks(value),
     })
+}
+
+/// The `PullDetails` fields one batched request supplies, by wire name.
+pub const DETAIL_FIELDS: [&str; 4] = [
+    "created_at",
+    "requested_reviewers",
+    "viewer_review_state",
+    "comment_count",
+];
+
+/// How the batched details request ended.
+#[derive(Debug, PartialEq)]
+pub enum DetailsOutcome {
+    Details(HashMap<u64, PullDetails>),
+    /// GitHub's GraphQL limit is spent, so no detail may be reported.
+    RateLimited,
+    Unavailable,
+}
+
+/// One GraphQL request for every listed pull request, aliased `p<number>`: when it was
+/// opened, who is asked to review, the viewer's latest review (the viewer comes from
+/// the same request), and conversation comments plus the comments inside each review.
+fn details_query(numbers: &[u64]) -> String {
+    let aliases: String = numbers
+        .iter()
+        .map(|number| {
+            format!(
+                "p{number}:pullRequest(number:{number}){{createdAt \
+reviewRequests(first:50){{nodes{{requestedReviewer{{__typename ...on User{{login}} \
+...on Mannequin{{login}} ...on Team{{slug}}}}}}}} \
+latestReviews(first:50){{nodes{{state author{{login}}}}}} \
+comments{{totalCount}} reviews(first:100){{nodes{{comments{{totalCount}}}}}}}}"
+            )
+        })
+        .collect();
+    format!(
+        "query($owner:String!,$repo:String!){{viewer{{login}} \
+repository(owner:$owner,name:$repo){{{aliases}}}}}"
+    )
+}
+
+/// Reads the response. A pull request whose comments cannot be totalled is left out
+/// whole, so a row never carries a partial set. The viewer's review state is absent
+/// when the response names no viewer.
+fn parse_details(response: &Value, project_id: &str, numbers: &[u64]) -> HashMap<u64, PullDetails> {
+    let viewer = response
+        .pointer("/data/viewer/login")
+        .and_then(Value::as_str);
+    let total = |value: &Value| {
+        value
+            .pointer("/comments/totalCount")
+            .and_then(Value::as_u64)
+    };
+    numbers
+        .iter()
+        .filter_map(|number| {
+            let pull = response.pointer(&format!("/data/repository/p{number}"))?;
+            let in_reviews: u64 = pull
+                .pointer("/reviews/nodes")?
+                .as_array()?
+                .iter()
+                .filter_map(total)
+                .sum();
+            let comments = total(pull)? + in_reviews;
+            let requested_reviewers = pull
+                .pointer("/reviewRequests/nodes")
+                .and_then(Value::as_array)
+                .map(|nodes| {
+                    nodes
+                        .iter()
+                        .filter_map(|node| {
+                            let who = node.get("requestedReviewer")?;
+                            let team = optional(who, "slug");
+                            let (name, kind) = match team {
+                                Some(slug) => (slug, "team"),
+                                None => (optional(who, "login")?, "user"),
+                            };
+                            Some(RequestedReviewer {
+                                name,
+                                kind: kind.into(),
+                            })
+                        })
+                        .collect()
+                });
+            let viewer_review_state = viewer.and_then(|viewer| {
+                let reviews = pull.pointer("/latestReviews/nodes")?.as_array()?;
+                let mine = reviews.iter().find(|review| {
+                    review
+                        .pointer("/author/login")
+                        .and_then(Value::as_str)
+                        .is_some_and(|login| login.eq_ignore_ascii_case(viewer))
+                });
+                Some(mine.map_or("none".to_owned(), |review| {
+                    field(review, "state").to_lowercase()
+                }))
+            });
+            Some((
+                *number,
+                PullDetails {
+                    project_id: project_id.to_owned(),
+                    number: *number,
+                    created_at: optional(pull, "createdAt"),
+                    requested_reviewers,
+                    comment_count: Some(u32::try_from(comments).unwrap_or(u32::MAX)),
+                    viewer_review_state,
+                },
+            ))
+        })
+        .collect()
+}
+
+fn classify_details(
+    _success: bool,
+    stdout: &str,
+    stderr: &str,
+    project_id: &str,
+    numbers: &[u64],
+) -> DetailsOutcome {
+    let said = format!("{stderr}\n{stdout}").to_lowercase();
+    if said.contains("rate limit") || said.contains("rate_limited") {
+        return DetailsOutcome::RateLimited;
+    }
+    // GraphQL can answer some pull requests and report errors for others, and `gh`
+    // then exits non-zero; every row that came back whole is kept.
+    let Ok(response) = serde_json::from_str::<Value>(stdout) else {
+        return DetailsOutcome::Unavailable;
+    };
+    let mut found = parse_details(&response, project_id, numbers);
+    // An error inside a pull request can null a node of an otherwise complete row, which
+    // would leave a short reviewer list or an undercounted total, so the row goes whole.
+    for error in response
+        .get("errors")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        if let Some([Value::String(root), Value::String(alias), ..]) = error
+            .get("path")
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+            && root == "repository"
+            && let Some(number) = alias.strip_prefix('p').and_then(|n| n.parse().ok())
+        {
+            found.remove(&number);
+        }
+    }
+    if found.is_empty() {
+        DetailsOutcome::Unavailable
+    } else {
+        DetailsOutcome::Details(found)
+    }
+}
+
+/// Details for GitHub pull requests, in requests of at most `DETAILS_BATCH` aliases. A
+/// batch that fails leaves only its own rows out; a spent limit ends the whole call.
+/// Other forges have none.
+pub async fn github_details(
+    forge: Forge,
+    cwd: &Path,
+    project_id: &str,
+    numbers: &[u64],
+) -> DetailsOutcome {
+    if forge != Forge::GitHub || numbers.is_empty() {
+        return DetailsOutcome::Unavailable;
+    }
+    let mut all = HashMap::new();
+    for batch in numbers.chunks(DETAILS_BATCH) {
+        match details_batch(forge, cwd, project_id, batch).await {
+            DetailsOutcome::Details(found) => all.extend(found),
+            DetailsOutcome::RateLimited => return DetailsOutcome::RateLimited,
+            DetailsOutcome::Unavailable => {}
+        }
+    }
+    if all.is_empty() {
+        DetailsOutcome::Unavailable
+    } else {
+        DetailsOutcome::Details(all)
+    }
+}
+
+async fn details_batch(
+    forge: Forge,
+    cwd: &Path,
+    project_id: &str,
+    numbers: &[u64],
+) -> DetailsOutcome {
+    let query = format!("query={}", details_query(numbers));
+    let args = [
+        "api",
+        "graphql",
+        "-F",
+        "owner={owner}",
+        "-F",
+        "repo={repo}",
+        "-f",
+        query.as_str(),
+    ];
+    let Ok(Ok(output)) =
+        tokio::time::timeout(DETAILS_TIMEOUT, spawn(forge, cwd, &args, None)).await
+    else {
+        return DetailsOutcome::Unavailable;
+    };
+    classify_details(
+        output.success,
+        &output.stdout,
+        &output.stderr,
+        project_id,
+        numbers,
+    )
 }
 
 pub async fn fetch_pull(forge: Forge, cwd: &Path, number: u64) -> Result<PullRequest> {
@@ -1851,6 +2127,7 @@ pub async fn forge_status(forge: Forge) -> orbyn_contracts::ForgeStatus {
         version: None,
         signed_in: false,
         accounts: Vec::new(),
+        viewer: None,
         problem: None,
     };
     let Some(program) = forge.program() else {
@@ -1881,6 +2158,9 @@ pub async fn forge_status(forge: Forge) -> orbyn_contracts::ForgeStatus {
     if let Ok(output) = spawn(forge, &cwd, auth, None).await {
         status.signed_in = output.success;
         status.accounts = auth_accounts(&format!("{}\n{}", output.stdout, output.stderr));
+        if output.success {
+            status.viewer = viewer(forge, &cwd).await;
+        }
     }
     status
 }
@@ -1979,6 +2259,30 @@ mod tests {
     }
 
     #[test]
+    fn a_github_row_carries_check_counts_from_its_own_rollup() {
+        let row = json!({
+            "number": 7, "title": "T", "url": "u", "state": "OPEN",
+            "headRefName": "a", "baseRefName": "b",
+            "statusCheckRollup": [
+                { "name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS" },
+                { "name": "lint", "status": "COMPLETED", "conclusion": "FAILURE" },
+                { "name": "e2e", "status": "IN_PROGRESS", "conclusion": "" },
+                { "context": "ci/legacy", "state": "ERROR" },
+            ],
+        });
+        let pull = parse_pull(&row).unwrap();
+        let checks = pull.checks.unwrap();
+        assert_eq!(
+            (checks.total, checks.passing, checks.failing, checks.running),
+            (4, 1, 2, 1)
+        );
+        assert_eq!(checks.failing_names, ["lint", "ci/legacy"]);
+        assert_eq!(pull.checks_state.as_deref(), Some("fail"));
+        let bare = json!({ "number": 1, "title": "T", "url": "u", "state": "OPEN" });
+        assert!(parse_pull(&bare).unwrap().checks.is_none());
+    }
+
+    #[test]
     fn every_forge_reads_into_one_shape() {
         let hub = json!({
             "number": 7, "title": "T", "url": "https://x/7", "state": "MERGED",
@@ -2046,11 +2350,75 @@ mod tests {
         assert_eq!(check_state("IN_PROGRESS", ""), "pending");
         assert_eq!(check_state("SUCCESS", ""), "pass");
         assert_eq!(check_state("failed", ""), "fail");
+    }
+
+    fn rolled(entries: Value) -> (PullChecks, String) {
+        let row = json!({ "statusCheckRollup": entries });
+        (github_checks(&row).unwrap(), github_rollup(&row).unwrap())
+    }
+
+    #[test]
+    fn rollup_entries_count_by_completion_then_conclusion() {
+        let run = |status: &str, conclusion: &str| json!({ "name": "c", "status": status, "conclusion": conclusion });
+        let context = |state: &str| json!({ "context": "c", "state": state });
+        // (entry, passing, failing, running) with a total of one each.
+        let table = [
+            (run("COMPLETED", "SUCCESS"), 1, 0, 0),
+            (run("COMPLETED", "FAILURE"), 0, 1, 0),
+            (run("COMPLETED", "TIMED_OUT"), 0, 1, 0),
+            (run("COMPLETED", "CANCELLED"), 0, 1, 0),
+            (run("COMPLETED", "ACTION_REQUIRED"), 0, 1, 0),
+            (run("COMPLETED", "STARTUP_FAILURE"), 0, 1, 0),
+            (run("COMPLETED", "STALE"), 0, 0, 0),
+            (run("COMPLETED", "NEUTRAL"), 0, 0, 0),
+            (run("COMPLETED", "SKIPPED"), 0, 0, 0),
+            (run("IN_PROGRESS", ""), 0, 0, 1),
+            (run("QUEUED", ""), 0, 0, 1),
+            (run("WAITING", ""), 0, 0, 1),
+            // Not completed, so a stale conclusion does not count.
+            (run("IN_PROGRESS", "FAILURE"), 0, 0, 1),
+            (context("SUCCESS"), 1, 0, 0),
+            (context("FAILURE"), 0, 1, 0),
+            (context("ERROR"), 0, 1, 0),
+            (context("PENDING"), 0, 0, 1),
+            (context("EXPECTED"), 0, 0, 1),
+        ];
+        for (entry, passing, failing, running) in table {
+            let (checks, _) = rolled(json!([entry.clone()]));
+            assert_eq!(
+                (checks.total, checks.passing, checks.failing, checks.running),
+                (1, passing, failing, running),
+                "{entry}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_rollup_word_follows_the_counts() {
+        let run = |status: &str, conclusion: &str| json!({ "name": "c", "status": status, "conclusion": conclusion });
+        assert_eq!(rolled(json!([])).1, "none");
+        assert_eq!(rolled(json!([run("COMPLETED", "SKIPPED")])).1, "pass");
         assert_eq!(
-            rollup(["pass".into(), "pending".into()].into_iter()),
+            rolled(json!([run("COMPLETED", "SUCCESS"), run("QUEUED", "")])).1,
             "pending"
         );
-        assert_eq!(rollup(std::iter::empty()), "none");
+        assert_eq!(
+            rolled(json!([
+                run("COMPLETED", "ACTION_REQUIRED"),
+                run("QUEUED", "")
+            ]))
+            .1,
+            "fail"
+        );
+    }
+
+    #[test]
+    fn failing_names_are_capped() {
+        let many: Vec<Value> = (0..30)
+            .map(|n| json!({ "name": format!("c{n}"), "status": "COMPLETED", "conclusion": "FAILURE" }))
+            .collect();
+        let (checks, _) = rolled(json!(many));
+        assert_eq!((checks.failing, checks.failing_names.len()), (30, 20));
     }
 
     #[test]
@@ -2102,5 +2470,140 @@ mod tests {
         let output =
             "github.com\n  ✓ Logged in to github.com account octo (keyring)\n  - Token: gho_****\n";
         assert_eq!(auth_accounts(output), ["octo"]);
+    }
+
+    fn details_response() -> Value {
+        json!({ "data": {
+            "viewer": { "login": "Me" },
+            "repository": {
+                "p3": {
+                    "createdAt": "2026-01-02T03:04:05Z",
+                    "reviewRequests": { "nodes": [
+                        { "requestedReviewer": { "__typename": "User", "login": "sam" } },
+                        { "requestedReviewer": { "__typename": "Team", "slug": "core" } },
+                        { "requestedReviewer": { "__typename": "Bot" } },
+                    ] },
+                    "latestReviews": { "nodes": [
+                        { "author": null, "state": "APPROVED" },
+                        { "author": { "login": "me" }, "state": "CHANGES_REQUESTED" },
+                    ] },
+                    "comments": { "totalCount": 2 },
+                    "reviews": { "nodes": [
+                        { "comments": { "totalCount": 3 } },
+                        { "comments": { "totalCount": 0 } },
+                    ] },
+                },
+                "p4": {
+                    "createdAt": "2026-02-02T00:00:00Z",
+                    "reviewRequests": { "nodes": [] },
+                    "latestReviews": { "nodes": [] },
+                    "comments": { "totalCount": 0 },
+                    "reviews": { "nodes": [] },
+                },
+                "p5": null,
+                "p6": { "comments": { "totalCount": 1 } },
+            },
+        } })
+    }
+
+    #[test]
+    fn the_details_response_merges_per_pull_request() {
+        let details = parse_details(&details_response(), "proj", &[3, 4, 5, 6, 7]);
+        // A pull request that is missing, null or incomplete has no entry at all.
+        assert_eq!(
+            details
+                .keys()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>(),
+            [3, 4].into()
+        );
+        let three = &details[&3];
+        assert_eq!(three.project_id, "proj");
+        assert_eq!(three.created_at.as_deref(), Some("2026-01-02T03:04:05Z"));
+        // Conversation comments plus every review's comments.
+        assert_eq!(three.comment_count, Some(5));
+        let reviewers = three.requested_reviewers.as_ref().unwrap();
+        assert_eq!(
+            reviewers
+                .iter()
+                .map(|r| (r.name.as_str(), r.kind.as_str()))
+                .collect::<Vec<_>>(),
+            [("sam", "user"), ("core", "team")]
+        );
+        // The viewer is matched ignoring case, and a null author is skipped.
+        assert_eq!(
+            three.viewer_review_state.as_deref(),
+            Some("changes_requested")
+        );
+        let four = &details[&4];
+        assert_eq!(four.requested_reviewers.as_deref(), Some(&[][..]));
+        assert_eq!(four.viewer_review_state.as_deref(), Some("none"));
+        assert_eq!(four.comment_count, Some(0));
+    }
+
+    #[test]
+    fn without_a_viewer_the_review_state_is_absent_not_none() {
+        let mut response = details_response();
+        response["data"]["viewer"] = Value::Null;
+        let details = parse_details(&response, "proj", &[3]);
+        assert_eq!(details[&3].viewer_review_state, None);
+        assert_eq!(details[&3].comment_count, Some(5));
+    }
+
+    #[test]
+    fn details_are_absent_when_the_batch_fails_or_the_limit_is_spent() {
+        let ok = details_response().to_string();
+        assert!(matches!(
+            classify_details(true, &ok, "", "p", &[3]),
+            DetailsOutcome::Details(found) if found.len() == 1
+        ));
+        for (success, stdout, stderr) in [
+            (false, "", "GraphQL: API rate limit already exceeded"),
+            (false, r#"{"errors":[{"type":"RATE_LIMITED"}]}"#, ""),
+        ] {
+            assert_eq!(
+                classify_details(success, stdout, stderr, "p", &[3]),
+                DetailsOutcome::RateLimited
+            );
+        }
+        for (success, stdout) in [
+            (false, ""),
+            (true, "not json"),
+            (
+                true,
+                r#"{"data":{},"errors":[{"message":"Could not resolve"}]}"#,
+            ),
+        ] {
+            assert_eq!(
+                classify_details(success, stdout, "", "p", &[3]),
+                DetailsOutcome::Unavailable
+            );
+        }
+    }
+
+    #[test]
+    fn errors_beside_data_keep_every_row_that_came_back() {
+        let mut response = details_response();
+        // p5 is null, and an error inside p4 nulled a node of an otherwise whole row.
+        response["errors"] = json!([
+            { "type": "NOT_FOUND", "path": ["repository", "p5"] },
+            { "type": "FORBIDDEN", "path": ["repository", "p4", "reviewRequests", "nodes", 0, "requestedReviewer"] },
+        ]);
+        let outcome = classify_details(false, &response.to_string(), "", "p", &[3, 4, 5]);
+        let DetailsOutcome::Details(found) = outcome else {
+            panic!("rows with data are kept: {outcome:?}");
+        };
+        assert_eq!(found.keys().copied().collect::<Vec<_>>(), [3]);
+    }
+
+    #[test]
+    fn the_details_query_names_one_alias_per_pull_request() {
+        let query = details_query(&[3, 40]);
+        assert!(query.contains("viewer{login}"));
+        assert!(
+            query.contains("p3:pullRequest(number:3)")
+                && query.contains("p40:pullRequest(number:40)")
+        );
+        assert_eq!(query.matches("pullRequest(").count(), 2);
     }
 }

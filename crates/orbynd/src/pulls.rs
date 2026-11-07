@@ -8,8 +8,8 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use orbyn_contracts::{
     AddPullComment, AskAboutStop, BulkClosePulls, CheckoutPull, EditPullComment, GeneratePullGuide,
-    MergePull, PullAction, ReactPullComment, ResolvePullThread, SetFilesViewed, SetPullPeople,
-    StackAction, SubmitReview, UpdatePull, WorkOnPull,
+    MergePull, PullAction, PullDetailsRequest, ReactPullComment, ResolvePullThread, SetFilesViewed,
+    SetPullPeople, StackAction, SubmitReview, UpdatePull, WorkOnPull,
 };
 use orbyn_core::source_control::forge::PullFilter;
 
@@ -31,6 +31,14 @@ pub async fn all(
     Query(query): Query<HashMap<String, String>>,
 ) -> ApiResult<impl IntoResponse> {
     Ok(Json(state.core.all_pulls(&filter_of(query)).await?))
+}
+
+/// Details the base list leaves out, asked for after the list has been shown.
+pub async fn details(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<PullDetailsRequest>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(state.core.pull_details(&body).await?))
 }
 
 pub async fn list(
