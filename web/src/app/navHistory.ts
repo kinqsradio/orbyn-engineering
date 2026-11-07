@@ -1,37 +1,62 @@
 import { useSyncExternalStore } from "react";
 
 /**
- * The browser does not say whether Back or Forward has anywhere to go, so the window keeps its own
- * trail of the places it has shown. Moving to the address just behind or ahead is a step along the
- * trail; any other address starts a new branch and drops what was ahead.
+ * The browser does not say whether Back or Forward has anywhere to go, so each history entry carries
+ * its position in the trail. An address arriving on an entry that already has a position is a
+ * Back/Forward step and moves to it. One arriving on an entry with none (a followed link) is a new
+ * place: it takes the next position and drops what was ahead, even if it is an address seen before.
  */
 interface Trail {
-  places: string[];
   at: number;
+  size: number;
 }
 
-let trail: Trail = { places: [], at: -1 };
+const KEY = "orbynTrail";
+let trail: Trail = { at: 0, size: 1 };
 let snapshot = { back: false, forward: false };
 const listeners = new Set<() => void>();
 
+const positionOf = (state: unknown): number | null => {
+  const value = typeof state === "object" && state !== null ? (state as Record<string, unknown>)[KEY] : null;
+  return typeof value === "number" ? value : null;
+};
+
+function stamp(at: number) {
+  const state = window.history.state;
+  window.history.replaceState({ ...(typeof state === "object" && state !== null ? state : {}), [KEY]: at }, "");
+}
+
 function publish() {
-  const next = { back: trail.at > 0, forward: trail.at < trail.places.length - 1 };
+  const next = { back: trail.at > 0, forward: trail.at < trail.size - 1 };
   if (next.back === snapshot.back && next.forward === snapshot.forward) return;
   snapshot = next;
   listeners.forEach((listener) => listener());
 }
 
-/** Records the current address as the window moves; exported for tests. */
-export function visit(place: string): void {
-  if (trail.places[trail.at] === place) return;
-  if (trail.places[trail.at - 1] === place) trail = { ...trail, at: trail.at - 1 };
-  else if (trail.places[trail.at + 1] === place) trail = { ...trail, at: trail.at + 1 };
-  else trail = { places: [...trail.places.slice(0, trail.at + 1), place], at: trail.at + 1 };
+function arrive() {
+  const known = positionOf(window.history.state);
+  if (known !== null) trail = { at: known, size: Math.max(trail.size, known + 1) };
+  else {
+    const at = trail.at + 1;
+    stamp(at);
+    trail = { at, size: at + 1 };
+  }
   publish();
 }
 
+function seed() {
+  const known = positionOf(window.history.state);
+  if (known === null) stamp(0);
+  // A reload keeps the position but not what lies ahead.
+  trail = { at: known ?? 0, size: (known ?? 0) + 1 };
+}
+
+/** Forgets the trail and starts again at the current entry; exported for tests. */
 export function resetTrail(): void {
-  trail = { places: [], at: -1 };
+  if (typeof window !== "undefined") {
+    stamp(0);
+    trail = { at: 0, size: 1 };
+  }
   snapshot = { back: false, forward: false };
 }
 
@@ -39,8 +64,9 @@ let started = false;
 function start() {
   if (started || typeof window === "undefined") return;
   started = true;
-  visit(window.location.hash);
-  window.addEventListener("hashchange", () => visit(window.location.hash));
+  seed();
+  publish();
+  window.addEventListener("hashchange", arrive);
 }
 
 const subscribe = (listener: () => void) => {
