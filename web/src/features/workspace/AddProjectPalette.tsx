@@ -418,7 +418,7 @@ export function AddProjectPalette({
         />
       ) : null}
       {browsing ? (
-        <Dialog title="Browse this computer" closeButton onClose={() => setBrowsing(false)} className="add-project-dialog">
+        <Dialog title="Browse this computer" onClose={() => setBrowsing(false)} className="add-project-dialog">
           {browseError ? (
             <p className="field-error" role="alert">
               {browseError}

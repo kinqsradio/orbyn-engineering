@@ -10,14 +10,16 @@ interface DialogProps {
   busy?: boolean;
   /** Extra classes on the dialog element, for a surface wider than a form. */
   className?: string;
-  /** A viewer, not a question: it has no footer to dismiss it, so the header carries Close. */
-  closeButton?: boolean;
   children: ReactNode;
   footer?: ReactNode;
 }
 
-/** A native modal: the top layer owns focus containment and Escape. */
-export function Dialog({ title, onClose, busy, className, closeButton, children, footer }: DialogProps) {
+/**
+ * A native modal: the top layer owns focus containment and Escape. With no footer
+ * there is nothing to dismiss it, so the header carries Close and a tap on the
+ * backdrop closes it. A dialog with footer actions has neither.
+ */
+export function Dialog({ title, onClose, busy, className, children, footer }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
@@ -46,10 +48,14 @@ export function Dialog({ title, onClose, busy, className, closeButton, children,
         event.preventDefault();
         if (!busy) onClose();
       }}
+      onClick={(event) => {
+        // Only the backdrop reports the dialog itself as the target.
+        if (!footer && !busy && event.target === event.currentTarget) onClose();
+      }}
     >
       <header className="dialog-head">
         <h2 id={titleId}>{title}</h2>
-        {closeButton ? (
+        {!footer ? (
           <IconButton label="Close" onClick={onClose} disabled={busy}>
             <X size={16} aria-hidden />
           </IconButton>

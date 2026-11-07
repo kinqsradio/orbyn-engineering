@@ -60,7 +60,7 @@ function RenderDialog({
   const [zoom, setZoom] = useState(100);
   const zoomId = useId();
   return (
-    <Dialog title={frame.title} className="dialog-wide" closeButton onClose={onClose}>
+    <Dialog title={frame.title} className="dialog-wide" onClose={onClose}>
       <div className="render-zoom">
         <label htmlFor={zoomId}>Zoom</label>
         <input
