@@ -95,7 +95,16 @@ test("an address in the terminal opens in the Browser panel", async ({ page }) =
     await page.keyboard.type("printf 'http://%s\\n' localhost:1/x\n");
     await expect(line).toBeVisible({ timeout: 4000 });
   }).toPass({ timeout: 25_000 });
-  const place = await line.boundingBox();
+  // The shell can still be printing (a lost first attempt scrolls the rows), so the line is measured once it has stopped moving.
+  let place = await line.boundingBox();
+  let still = 0;
+  await expect.poll(async () => {
+    await page.waitForTimeout(150);
+    const next = await line.boundingBox();
+    still = next !== null && place !== null && next.y === place.y ? still + 1 : 0;
+    place = next;
+    return still;
+  }).toBeGreaterThanOrEqual(4);
   if (!place) throw new Error("no line");
   await page.mouse.move(place.x + 40, place.y + place.height / 2);
   await page.mouse.move(place.x + 44, place.y + place.height / 2);
@@ -138,7 +147,7 @@ test("a keybindings file that changes or breaks says so when you come back", asy
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await expect(page.getByText("Keybindings reloaded")).toBeVisible();
   await page.keyboard.press("ControlOrMeta+Shift+y");
-  await expect(page.getByRole("button", { name: "Expand sidebar" }).or(page.locator(".sidebar[data-collapsed]")).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Show sidebar" })).toBeVisible();
   writeFileSync(view.path, "{ not json");
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await expect(page.getByText(/The keybindings file has a problem/)).toBeVisible();
