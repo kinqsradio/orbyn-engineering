@@ -92,6 +92,8 @@ function SettingsPageContent({ section, onClose }: { section: SettingsSection | 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
+      // A dialog owns Escape even when its focused button has just been disabled and focus fell to the page.
+      if (document.querySelector("dialog[open]")) return;
       const target = event.target;
       if (target instanceof Element) {
         if (target.closest('dialog[open], [role="dialog"], [role="menu"], [role="listbox"], [role="combobox"], [contenteditable="true"]')) return;
