@@ -112,8 +112,8 @@ test("a late environment save cannot clear a new draft after scope navigation", 
     await form(page).getByRole("textbox", { name: "Traces endpoint", exact: true }).fill("http://collector.invalid/authorized-environment-write");
     await form(page).getByRole("button", { name: "Save", exact: true }).click();
     await written;
-    await page.getByRole("button", { name: "Project scope: All projects", exact: true }).click();
-    await page.getByRole("menuitemradio", { name: group.label, exact: true }).click();
+    // Maintenance carries no scope picker now; the scope still arrives with the route.
+    await page.evaluate((hash) => { window.location.hash = hash; }, `#/settings/maintenance?project=${encodeURIComponent(group.key)}`);
     await expect(form(page)).toHaveCount(0);
     await section(page).getByRole("button", { name: environment, exact: true }).click();
     const metrics = form(page).getByRole("textbox", { name: "Metrics endpoint", exact: true });
