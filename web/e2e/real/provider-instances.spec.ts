@@ -9,7 +9,7 @@ const seed = (service: Service, rows: Instance[]) => service.api("PUT", "/api/pr
 const local = (id = "work"): Instance => ({ id, driver: "_local_acp", name: id === "work" ? "Work" : id, program: executable, args: ["acp", "two literal words", ""], enabled: false, forward: { keep: id } });
 const open = async (page: Page, service: Service) => {
   await page.goto(`${service.page}#/settings/providers`);
-  await expect(page.getByRole("button", { name: "Add an instance", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Add provider", exact: true })).toBeEnabled();
 };
 function writes(page: Page) {
   const seen: unknown[] = [];
@@ -25,9 +25,9 @@ test("Local ACP wizard uses one CAS and retains disabled configuration, literal 
   const { service } = await startProject();
   try {
     const seen = writes(page); await open(page, service);
-    await page.getByRole("button", { name: "Add an instance", exact: true }).click();
+    await page.getByRole("button", { name: "Add provider", exact: true }).click();
     await page.getByRole("button", { name: "Cancel", exact: true }).click(); expect(seen).toHaveLength(0);
-    await page.getByRole("button", { name: "Add an instance", exact: true }).click();
+    await page.getByRole("button", { name: "Add provider", exact: true }).click();
     const wizard = page.getByRole("dialog", { name: "Add provider", exact: true });
     await wizard.getByRole("button", { name: "Local ACP command", exact: true }).click();
     await expect(wizard.getByRole("button", { name: "Next", exact: true })).toBeDisabled();

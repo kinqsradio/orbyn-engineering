@@ -173,7 +173,7 @@ test("stopping a parent stops the child it delegated to", async ({ page }) => {
 
 test("a local ACP command becomes a provider", async ({ page }) => {
   await page.goto(`${service.page}#/settings/providers`);
-  await page.getByRole("button", { name: "Add an instance" }).click();
+  await page.getByRole("button", { name: "Add provider" }).click();
   const dialog = page.getByRole("dialog", { name: "Add provider" });
   await dialog.getByRole("button", { name: "Local ACP command" }).click();
   await dialog.getByLabel("Executable").fill(FAKE);

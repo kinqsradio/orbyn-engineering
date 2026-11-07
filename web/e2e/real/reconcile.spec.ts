@@ -196,7 +196,7 @@ test("the keybindings page rebinds and the new key runs", async ({ page }) => {
 
 test("project defaults, scripts and the worktree settings save", async ({ page }) => {
   await page.goto(`${service.page}#/settings/worktrees`);
-  await page.getByRole("radio", { name: "Semantic", exact: true }).click();
+  await page.getByRole("radio", { name: "From the thread", exact: true }).click();
   await expect
     .poll(async () => {
       const prefs = await service.api<{ key: string; value: unknown }[]>("GET", "/api/preferences");
