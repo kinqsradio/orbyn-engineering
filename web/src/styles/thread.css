@@ -452,7 +452,7 @@
 .code-actions {
   display: flex;
   opacity: 0;
-  transition: opacity 150ms;
+  transition: opacity var(--m-fast);
 }
 .code-card:hover .code-actions,
 .code-card:focus-within .code-actions {
@@ -1125,7 +1125,7 @@
   border: 1px solid var(--color-borderStrong);
   border-radius: var(--radius-xl);
   background: var(--color-background);
-  transition: border-color 200ms;
+  transition: border-color var(--m-base);
 }
 .composer-box:hover {
   border-color: var(--color-borderHover);
@@ -1260,7 +1260,7 @@
   background: var(--color-primary);
   color: var(--color-onAccent);
   cursor: pointer;
-  transition: transform var(--motion-base) var(--ease-out);
+  transition: transform var(--m-base) var(--m-io);
 }
 .send-btn:hover:not(:disabled) {
   transform: scale(1.05);
@@ -2222,8 +2222,8 @@ button.detail-row:hover {
   backdrop-filter: blur(16px) saturate(1.08);
   box-shadow: 0 18px 44px -18px var(--color-shadow);
   transition:
-    scale 150ms cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    scale var(--m-fast) var(--m-io),
+    opacity var(--m-fast) var(--m-io);
 }
 @starting-style {
   .model-picker,
@@ -3001,7 +3001,7 @@ button.detail-row:hover {
   height: 24px;
   margin-top: 4px;
   opacity: 0;
-  transition: opacity 150ms;
+  transition: opacity var(--m-fast);
 }
 .msg-user .msg-actions {
   justify-content: flex-end;
@@ -3204,7 +3204,7 @@ button.detail-row:hover {
 .lightbox-stage img {
   max-width: 90%;
   max-height: 90%;
-  transition: transform 150ms ease;
+  transition: transform var(--m-fast) ease;
 }
 .lightbox-stage video {
   max-width: 90%;
@@ -3461,7 +3461,7 @@ button.detail-row:hover {
   z-index: 2;
   width: 20px;
   opacity: 0;
-  transition: opacity 150ms;
+  transition: opacity var(--m-fast);
 }
 .minimap-zone:hover,
 .minimap-zone:focus-within {
@@ -4287,7 +4287,7 @@ div.browser-bridge-row {
   z-index: 2;
   pointer-events: none;
   color: var(--color-primary);
-  transition: left 150ms ease-out, top 150ms ease-out;
+  transition: left var(--m-fast) ease-out, top var(--m-fast) ease-out;
 }
 .browser-agent-cursor svg {
   fill: var(--color-raised);

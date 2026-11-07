@@ -149,7 +149,7 @@ input[type="checkbox"][role="switch"] {
   border-radius: var(--radius-pill);
   background: var(--color-borderStrong);
   cursor: pointer;
-  transition: background-color var(--motion-fast) var(--ease-out);
+  transition: background-color var(--m-fast) var(--m-io);
 }
 input[type="checkbox"][role="switch"]::after {
   content: "";
@@ -160,7 +160,7 @@ input[type="checkbox"][role="switch"]::after {
   height: 14px;
   border-radius: 50%;
   background: var(--color-background);
-  transition: left var(--motion-fast) var(--ease-out);
+  transition: left var(--m-fast) var(--m-io);
 }
 input[type="checkbox"][role="switch"]:checked {
   background: var(--color-primary);
@@ -212,8 +212,8 @@ input[type="checkbox"][role="switch"]:disabled {
   white-space: nowrap;
   cursor: pointer;
   transition:
-    background-color var(--motion-fast) var(--ease-out),
-    border-color var(--motion-fast) var(--ease-out);
+    background-color var(--m-fast) var(--m-io),
+    border-color var(--m-fast) var(--m-io);
 }
 .btn:hover:not(:disabled) {
   background: var(--color-hover);
@@ -264,7 +264,7 @@ input[type="checkbox"][role="switch"]:disabled {
   background: transparent;
   color: var(--color-textSoft);
   cursor: pointer;
-  transition: background-color var(--motion-fast) var(--ease-out);
+  transition: background-color var(--m-fast) var(--m-io);
 }
 .icon-btn:hover:not(:disabled) {
   background: var(--color-hover);
@@ -548,12 +548,12 @@ input[type="checkbox"][role="switch"]:disabled {
 .dialog::backdrop {
   background: var(--color-backdrop);
   backdrop-filter: blur(4px);
-  transition: opacity 200ms;
+  transition: opacity var(--m-base);
 }
 .dialog {
   transition:
-    scale 150ms,
-    opacity 150ms;
+    scale var(--m-fast),
+    opacity var(--m-fast);
 }
 @starting-style {
   .dialog[open] {
@@ -753,7 +753,7 @@ input[type="checkbox"][role="switch"]:disabled {
 .collapsible-panel {
   height: var(--collapsible-panel-height, auto);
   overflow: clip;
-  transition: height 200ms;
+  transition: height var(--m-base);
 }
 .collapsible-panel[data-collapsed] {
   height: 0;
@@ -847,8 +847,8 @@ input[type="checkbox"][role="switch"]:disabled {
   font-size: var(--text-meta);
   pointer-events: none;
   transition:
-    scale 150ms,
-    opacity 150ms;
+    scale var(--m-fast),
+    opacity var(--m-fast);
   transform-origin: left top;
 }
 @starting-style {
@@ -927,8 +927,8 @@ input[type="checkbox"][role="switch"]:disabled {
     0 0 0 1px var(--color-borderStrong);
   font-size: var(--text-nav);
   transition:
-    translate 200ms var(--ease-drawer),
-    opacity 200ms;
+    translate var(--m-base) var(--ease-drawer),
+    opacity var(--m-base);
 }
 .star-prompt {
   align-items: flex-start;
